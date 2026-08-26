@@ -32,8 +32,11 @@ never drift from the mark drawn in the app. Note that the icon step uses
   No `$"..."` interpolation, no `?.`/`??=`, no `nameof`, no expression-bodied
   members, no `out var`, no pattern matching, no tuples, no auto-property
   initializers. Anonymous callbacks use `delegate(...) { }` syntax.
-- **.NET Framework 4.8 BCL only** — no NuGet, no third-party libraries, no image
-  assets. Every glyph is GDI+ vector drawing in `src/Icons.cs`.
+- **.NET Framework 4.8 BCL only** — no NuGet, no third-party libraries, and no
+  image asset the *build* consumes. Every glyph is GDI+ vector drawing in
+  `src/Icons.cs`, and the app mark in `src/Branding.cs` is drawn the same way.
+  The PNGs in `screenshots/` are documentation for the README and are the one
+  exception; nothing in `src/` may ever reference them.
 - **One network call, and only one.** `src/MainForm.Updates.cs` asks
   `api.github.com` for the latest release; nothing else in the app opens a
   socket. No telemetry, no online tag or cover lookup, nothing about the user's

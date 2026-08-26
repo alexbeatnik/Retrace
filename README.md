@@ -19,25 +19,7 @@ and [AV](https://github.com/alexbeatnik/AV) — dark cards, one phosphor hue,
 dashed rules and corner brackets — so the three read as the same machine. The
 hue is a setting: six schemes, switchable at run time.
 
-```
- ┌ RETRACE ──────────────────── PLAYER  EQUALISER  SETTINGS ┐
- │ ┌ NOW PLAYING ──────────────────────────────────────────┐│
- │ │  Artist — Title of the track                    1:23  ││
- │ │  Album · 2019 · track 3 of 81                   4:12  ││
- │ │  ████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ││
- │ └───────────────────────────────────────────────────────┘│
- │ ┌ TRANSPORT ──────────┐┌ ANALYSER ─┐┌ LEVELS ───────────┐│
- │ │ ⏮ ▶ ■ ⏭ ⏏  ⤨ ⟳     ││  ▁▃▅█▆▃▁  ││ VOLUME  ███░  70% ││
- │ └─────────────────────┘└───────────┘└───────────────────┘│
- │ ┌ FORMAT   BITRATE   SAMPLE RATE   CHANNELS   TRACK ────┐│
- │ │  FLAC     1006k     44.1kHz       Stereo     3 / 81   ││
- │ └───────────────────────────────────────────────────────┘│
- │ ┌ PLAYLIST  81 · 5:12   FILES FOLDER LOAD SAVE REM CLR ─┐│
- │ │  1  Artist — Title                              4:12  ││
- │ │  2  Artist — Another                            3:48  ││
- │ └───────────────────────────────────────────────────────┘│
- └──────────────────────────────────────────────────────────┘
-```
+![The player page](screenshots/player.png)
 
 ## What it plays
 
@@ -61,6 +43,8 @@ no decoder for is skipped rather than stalling the playlist.
 
 Volume, balance, the equaliser curve, the colour scheme, the language, the page
 you were on and the playlist itself all come back after a restart.
+
+![The equaliser page](screenshots/equaliser.png)
 
 ## Keyboard
 
@@ -89,8 +73,10 @@ shows.
 Requires nothing but Windows itself (.NET Framework 4.8, present since Windows
 10 1903). `build.ps1` runs the compiler twice on purpose: the app draws its own
 icon, so the first pass produces an executable that can write `app.ico` and the
-second embeds it. That is why the repository contains no binary assets at all —
-every glyph is GDI+ vector drawing in `src/Icons.cs`.
+second embeds it. That is why the build needs no binary assets at all — every
+glyph, and the app mark itself, is GDI+ vector drawing in `src/Icons.cs` and
+`src/Branding.cs`. The only images in the repository are the screenshots on this
+page.
 
 ## How it works
 
@@ -143,11 +129,12 @@ is checked against what is actually there before a byte is read.
 .\test.ps1
 ```
 
-92 tests over the parts that have no window: time and settings formatting, the
+105 tests over the parts that have no window: time and settings formatting, the
 M3U round trip, playlist order under shuffle and the three repeat modes, the
 equaliser and the FFT, the downmix and the level controls, all four tag formats
-including truncated and lying headers, the palette derivation, and the two
-string tables. No audio device and no real media file is needed, and the suite
+including truncated and lying headers, the palette derivation, the two string
+tables, and the updater's two decisions — when a check is due, and whether a tag
+is really newer. No audio device and no real media file is needed, and the suite
 runs in about a second.
 
 `.github/workflows/tests.yml` runs the build and the tests on every pull request
@@ -165,6 +152,8 @@ launch. That is expected for a project without a code signing certificate.
 ## Installing and updating
 
 Both live on the Settings page, and neither needs administrator rights.
+
+![The settings page](screenshots/settings.png)
 
 **Install for this user** copies the exe into
 `%LocalAppData%\Programs\Retrace`, puts a shortcut in the Start menu and on the
