@@ -1,0 +1,9 @@
+# Build artifacts
+Retrace.exe
+Retrace.Tests.exe
+app.ico
+*.pdb
+
+# Local user state
+settings.ini
+session.m3u8
