@@ -338,6 +338,13 @@ namespace Retrace
                         if (!string.IsNullOrEmpty(tags.Title)) next.Title = tags.Title;
                         next.Album = tags.Album;
                         next.Year = tags.Year;
+                        // The decoder is the last word on the length, but it only
+                        // ever opens the track being played: without the header's
+                        // own answer every row nobody has played yet reads --:--
+                        // and the playlist total is wrong until it has. A length
+                        // already measured by the decoder is not overwritten.
+                        if (tags.Duration > 0 && next.Duration <= 0)
+                            next.Duration = tags.Duration;
                         next.Scanned = true;
 
                         // Repaint in batches: a redraw per file turns a thousand-

@@ -15,38 +15,42 @@ namespace Retrace
     static class Brand
     {
         public const string Product = "Retrace";
-        public const string Version = "1.0.0";
+        public const string Version = "1.1.0";
 
         // 256 is what Explorer's extra-large view wants; 16/20/24 are the tray,
         // the taskbar and the title bar.
         internal static readonly int[] IconSizes = { 16, 20, 24, 32, 48, 64, 128, 256 };
 
         /// <summary>
-        /// The mark: an amber level meter on a near-black tile.
+        /// The mark: a level meter in the accent on a dark tile.
         ///
-        /// Deliberately plainer than a card in the UI — no dashed rule, no corner
-        /// brackets — because this is read at 16 and 24 pixels on a taskbar,
-        /// where a frame closes up into a smudge and only the bars survive.
-        /// Drawn into an arbitrary rectangle so the same code serves every size
-        /// in the icon resource.
+        /// Deliberately plainer than a card in the UI, because this is read at 16
+        /// and 24 pixels on a taskbar where any frame closes up into a smudge and
+        /// only the bars survive. Drawn into an arbitrary rectangle so the same
+        /// code serves every size in the icon resource and the window header.
         ///
-        /// It always uses the default scheme rather than the current one — the
-        /// icon is written by the build, long before any settings exist, and an
-        /// icon that changed with a preference would leave Explorer showing
-        /// whichever version it cached first.
+        /// The icon resource always asks for the default scheme rather than the
+        /// current one: it is written by the build, long before any settings
+        /// exist, and a mark that changed with a preference would leave Explorer
+        /// showing whichever version it cached first. The header passes the live
+        /// one, where following the scheme is the point.
         /// </summary>
         public static void PaintMark(Graphics g, RectangleF r)
         {
+            PaintMark(g, r, Palette.All[0]);
+        }
+
+        public static void PaintMark(Graphics g, RectangleF r, Palette scheme)
+        {
             float s = Math.Min(r.Width, r.Height);
             var box = new RectangleF(r.X + (r.Width - s) / 2f, r.Y + (r.Height - s) / 2f, s, s);
-            Palette scheme = Palette.All[0];
 
             // The tile is the one rounded thing in the app. Everything else on
             // the taskbar is set in a rounded square, and a hard-cornered black
             // block beside them reads as a missing icon rather than as a mark.
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            using (GraphicsPath tile = RoundedTile(box, s * 0.20f))
-            using (var b = new SolidBrush(Color.FromArgb(14, 14, 14)))
+            using (GraphicsPath tile = RoundedTile(box, s * 0.22f))
+            using (var b = new SolidBrush(Color.FromArgb(22, 25, 33)))
                 g.FillPath(b, tile);
 
             // Fixed heights rather than random: an icon has to look the same
@@ -64,7 +68,7 @@ namespace Retrace
             float cy = box.Y + s / 2f;
 
             // Square ends and no antialiasing: at these widths a feathered edge
-            // spends half the bar turning amber into mud.
+            // spends half the bar turning the hue into mud.
             g.SmoothingMode = SmoothingMode.None;
             using (Brush b = BarBrush(scheme, box, s))
                 for (int i = 0; i < heights.Length; i++, x += bw + gap)
@@ -76,23 +80,23 @@ namespace Retrace
 
         static int Px(float v) { return (int)Math.Round(v, MidpointRounding.AwayFromZero); }
 
-        /// <summary>Amber, a shade hotter at the top than at the bottom so the
-        /// bars read as lit rather than painted. The hot end is only halfway to
-        /// the palette's Bright: taken the whole way it washes out to pale yellow
-        /// and stops being amber. Flat below 32, where a gradient spanning ten
-        /// pixels only muddies the hue.</summary>
+        /// <summary>The accent, a shade hotter at the top than at the bottom so
+        /// the bars read as lit rather than painted. The hot end is only halfway
+        /// to the palette's Hot: taken the whole way it washes out and stops being
+        /// the hue at all. Flat below 32, where a gradient spanning ten pixels
+        /// only muddies it.</summary>
         static Brush BarBrush(Palette scheme, RectangleF box, float s)
         {
-            if (s < 32) return new SolidBrush(scheme.Text);
+            if (s < 32) return new SolidBrush(scheme.Accent);
             Color hot = Color.FromArgb(
-                (scheme.Text.R + scheme.Bright.R) / 2,
-                (scheme.Text.G + scheme.Bright.G) / 2,
-                (scheme.Text.B + scheme.Bright.B) / 2);
+                (scheme.Accent.R + scheme.Hot.R) / 2,
+                (scheme.Accent.G + scheme.Hot.G) / 2,
+                (scheme.Accent.B + scheme.Hot.B) / 2);
             // The gradient rectangle is drawn a little taller than the tallest
             // bar; a brush whose rectangle stops short of the fill tiles itself.
             return new LinearGradientBrush(
                 new RectangleF(box.X, box.Y + s * 0.17f, s, s * 0.66f),
-                hot, scheme.Text, LinearGradientMode.Vertical);
+                hot, scheme.Accent, LinearGradientMode.Vertical);
         }
 
         /// <summary>A rounded square as a path, so it fills in one call.</summary>

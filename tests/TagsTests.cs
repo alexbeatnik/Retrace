@@ -411,5 +411,332 @@ namespace Retrace.Tests
             b.AddRange(new byte[32]);
             Read(b.ToArray());   // must return rather than hang
         }
+
+        // ---- How long it runs ----------------------------------------------------
+        //
+        // The length comes out of the same pass as the text, so a track shows its
+        // duration the moment it is added rather than the first time it is played.
+        // Each of these builds a header stating a length and checks the arithmetic
+        // that gets back to seconds.
+
+        /// <summary>An MPEG 1 layer III frame header at 44.1 kHz, stereo, no
+        /// padding — 417 bytes long at 128 kbps.</summary>
+        static byte[] MpegHeader(int kbps)
+        {
+            var table = new[] { 0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320 };
+            int index = Array.IndexOf(table, kbps);
+            return new byte[]
+            {
+                0xFF, 0xFB,               // sync, MPEG 1, layer III, no CRC
+                (byte)(index << 4),       // bitrate index, 44100, no padding
+                0x00                      // stereo
+            };
+        }
+
+        const int Mp3FrameBytes = 417;    // one 128 kbps frame at 44.1 kHz
+
+        /// <summary>One whole mp3 frame: the header, the given bytes laid over the
+        /// start of its payload, zeros for the rest.</summary>
+        static byte[] Mp3Frame(byte[] payload)
+        {
+            var frame = new byte[Mp3FrameBytes];
+            Array.Copy(MpegHeader(128), frame, 4);
+            if (payload != null) Array.Copy(payload, 0, frame, 4, payload.Length);
+            return frame;
+        }
+
+        public static void TestMp3ConstantBitrateLength()
+        {
+            // 160,000 bytes at 128 kbps is ten seconds. The ID3v2 tag in front of
+            // it is not audio and must not be counted as any.
+            var audio = new byte[160000];
+            Array.Copy(MpegHeader(128), audio, 4);
+            Array.Copy(MpegHeader(128), 0, audio, Mp3FrameBytes, 4);
+
+            var b = new List<byte>();
+            b.AddRange(Id3v2(3, "TIT2", "Drift"));
+            b.AddRange(audio);
+
+            double d = Read(b.ToArray()).Duration;
+            Assert.True(Math.Abs(d - 10) < 0.05, "ten seconds of 128 kbps, got " + d);
+        }
+
+        public static void TestMp3XingFrameCountBeatsTheByteCount()
+        {
+            // The whole point of a Xing header: a variable bitrate file cannot be
+            // measured by dividing its size by the first frame's bitrate, so where
+            // the frame count is stated it has to win.
+            var xing = new List<byte>();
+            xing.AddRange(new byte[32]);                       // the side information
+            xing.AddRange(Encoding.ASCII.GetBytes("Xing"));
+            xing.AddRange(Int32Be(1));                         // flags: frame count present
+            xing.AddRange(Int32Be(1000));
+
+            var b = new List<byte>();
+            b.AddRange(Id3v2(3, "TIT2", "Drift"));
+            b.AddRange(Mp3Frame(xing.ToArray()));
+            b.AddRange(Mp3Frame(null));
+
+            double d = Read(b.ToArray()).Duration;
+            Assert.True(Math.Abs(d - 1000 * 1152.0 / 44100) < 0.01,
+                "a thousand frames, got " + d);
+        }
+
+        public static void TestMp3IgnoresTheId3v1BlockAtTheEnd()
+        {
+            // 128 bytes of tag counted as audio is an extra eight milliseconds on
+            // every stripped mp3 — small, but it is the same mistake that makes a
+            // cover-art tag add a whole second at the front.
+            var audio = new byte[128000];                      // eight seconds
+            Array.Copy(MpegHeader(128), audio, 4);
+            Array.Copy(MpegHeader(128), 0, audio, Mp3FrameBytes, 4);
+
+            var b = new List<byte>();
+            b.AddRange(audio);
+            b.AddRange(Id3v1("Drift", "Low Orbit", "Night Transit", "2019"));
+
+            double d = Read(b.ToArray()).Duration;
+            Assert.True(Math.Abs(d - 8) < 0.01, "eight seconds and no tag, got " + d);
+        }
+
+        public static void TestMp3RefusesAFalseSync()
+        {
+            // 0xFF 0xFF is a sync pattern followed by a reserved version and a
+            // reserved layer. Believing it would produce a length out of nothing.
+            var b = new List<byte>();
+            b.AddRange(Id3v2(3, "TIT2", "Drift"));
+            for (int i = 0; i < 64; i++) b.Add(0xFF);
+            Assert.Equal(0.0, Read(b.ToArray()).Duration, "junk is not a frame");
+        }
+
+        /// <summary>A FLAC file whose STREAMINFO states the rate and the sample
+        /// count, which is where its length comes from.</summary>
+        static byte[] FlacWithStreamInfo(int rate, long samples)
+        {
+            var info = new byte[34];
+            info[10] = (byte)(rate >> 12);
+            info[11] = (byte)(rate >> 4);
+            // Four low bits of the rate, then three of channel count and the top
+            // bit of the sample depth, all packed into one byte.
+            info[12] = (byte)(((rate & 0xF) << 4) | (1 << 1));
+            info[13] = (byte)((15 << 4) | ((samples >> 32) & 0x0F));   // 16-bit samples
+            info[14] = (byte)(samples >> 24);
+            info[15] = (byte)(samples >> 16);
+            info[16] = (byte)(samples >> 8);
+            info[17] = (byte)samples;
+
+            var b = new List<byte>();
+            b.AddRange(Encoding.ASCII.GetBytes("fLaC"));
+            b.Add(0x00);                       // STREAMINFO, and not the last block
+            b.Add(0); b.Add(0); b.Add(34);
+            b.AddRange(info);
+            b.Add(0x84);                       // VORBIS_COMMENT, flagged last
+            b.Add(0); b.Add(0); b.Add(0);
+            return b.ToArray();
+        }
+
+        public static void TestFlacLengthFromStreamInfo()
+        {
+            double d = Read(FlacWithStreamInfo(44100, 44100L * 251)).Duration;
+            Assert.True(Math.Abs(d - 251) < 0.001, "four minutes eleven, got " + d);
+        }
+
+        public static void TestFlacUnknownSampleCountStaysUnknown()
+        {
+            // Zero is the format's own "I was written to a pipe and do not know",
+            // not a track of no length.
+            Assert.Equal(0.0, Read(FlacWithStreamInfo(44100, 0)).Duration,
+                "an unstated sample count");
+        }
+
+        static byte[] OggPage(long granule, byte[] payload)
+        {
+            var b = new List<byte>();
+            b.AddRange(Encoding.ASCII.GetBytes("OggS"));
+            b.Add(0);                          // version
+            b.Add(0);                          // header type
+            for (int i = 0; i < 8; i++) b.Add((byte)(granule >> (8 * i)));
+            b.AddRange(LittleInt(1));          // stream serial
+            b.AddRange(LittleInt(0));          // page sequence
+            b.AddRange(LittleInt(0));          // checksum, which nothing here verifies
+            b.Add(1);                          // one segment
+            b.Add((byte)payload.Length);
+            b.AddRange(payload);
+            return b.ToArray();
+        }
+
+        static byte[] VorbisIdent(int rate)
+        {
+            var b = new List<byte>();
+            b.Add(1);
+            b.AddRange(Encoding.ASCII.GetBytes("vorbis"));
+            b.AddRange(LittleInt(0));          // version
+            b.Add(2);                          // channels
+            b.AddRange(LittleInt(rate));
+            b.AddRange(new byte[16]);          // the bitrate hints and the block sizes
+            return b.ToArray();
+        }
+
+        public static void TestOggVorbisLengthFromTheLastGranule()
+        {
+            var b = new List<byte>();
+            b.AddRange(OggPage(0, VorbisIdent(44100)));
+            b.AddRange(OggPage(44100L * 5, new byte[64]));
+            double d = Read(b.ToArray()).Duration;
+            Assert.True(Math.Abs(d - 5) < 0.001, "five seconds of vorbis, got " + d);
+        }
+
+        public static void TestOggSkipsAPageThatFinishesNoPacket()
+        {
+            // All ones is the container's "nothing ends here". Read as a number it
+            // is a length of six million years.
+            var b = new List<byte>();
+            b.AddRange(OggPage(0, VorbisIdent(48000)));
+            b.AddRange(OggPage(48000L * 3, new byte[32]));
+            b.AddRange(OggPage(-1, new byte[32]));
+            double d = Read(b.ToArray()).Duration;
+            Assert.True(Math.Abs(d - 3) < 0.001, "the last page that ended a packet, got " + d);
+        }
+
+        public static void TestOpusLengthDropsThePreSkip()
+        {
+            // Opus counts granules at 48 kHz whatever the source rate was, and the
+            // pre-skip in front of them is the encoder's padding, not music.
+            var head = new List<byte>();
+            head.AddRange(Encoding.ASCII.GetBytes("OpusHead"));
+            head.Add(1);                       // version
+            head.Add(2);                       // channels
+            head.Add(0x38); head.Add(0x01);    // pre-skip: 312 samples
+            head.AddRange(LittleInt(48000));
+            head.AddRange(new byte[3]);
+
+            var b = new List<byte>();
+            b.AddRange(OggPage(0, head.ToArray()));
+            b.AddRange(OggPage(48000L * 2 + 312, new byte[32]));
+            double d = Read(b.ToArray()).Duration;
+            Assert.True(Math.Abs(d - 2) < 0.001, "two seconds of opus, got " + d);
+        }
+
+        static byte[] Mvhd(int timescale, long duration)
+        {
+            var b = new List<byte>();
+            b.AddRange(Int32Be(0));            // version 0, no flags
+            b.AddRange(Int32Be(0));            // created
+            b.AddRange(Int32Be(0));            // modified
+            b.AddRange(Int32Be(timescale));
+            b.AddRange(Int32Be((int)duration));
+            b.AddRange(new byte[80]);          // the rate, the matrix and the rest
+            return Atom("mvhd", b.ToArray());
+        }
+
+        static byte[] Mp4WithMovieHeader(byte[] mvhd)
+        {
+            var b = new List<byte>();
+            b.AddRange(Atom("ftyp", Encoding.ASCII.GetBytes("M4A isom")));
+            b.AddRange(Atom("moov", mvhd));
+            return b.ToArray();
+        }
+
+        public static void TestMp4LengthFromTheMovieHeader()
+        {
+            double d = Read(Mp4WithMovieHeader(Mvhd(1000, 187500))).Duration;
+            Assert.True(Math.Abs(d - 187.5) < 0.001, "three minutes seven and a half, got " + d);
+        }
+
+        public static void TestMp4UnknownDurationStaysUnknown()
+        {
+            // All ones is what a fragmented file writes when the total is not
+            // known yet; at a millisecond timescale it would read as fifty days.
+            double d = Read(Mp4WithMovieHeader(Mvhd(1000, 0xFFFFFFFFL))).Duration;
+            Assert.Equal(0.0, d, "an unstated movie duration");
+        }
+
+        static byte[] Wav(long declaredDataSize, int byteRate, int actualDataBytes)
+        {
+            var b = new List<byte>();
+            b.AddRange(Encoding.ASCII.GetBytes("RIFF"));
+            b.AddRange(LittleInt(0));                      // the riff size, unread
+            b.AddRange(Encoding.ASCII.GetBytes("WAVE"));
+            b.AddRange(Encoding.ASCII.GetBytes("fmt "));
+            b.AddRange(LittleInt(16));
+            b.AddRange(new byte[] { 1, 0, 1, 0 });          // pcm, mono
+            b.AddRange(LittleInt(byteRate));               // 8-bit at 8 kHz
+            b.AddRange(LittleInt(byteRate));
+            b.AddRange(new byte[] { 1, 0, 8, 0 });
+            b.AddRange(Encoding.ASCII.GetBytes("data"));
+            b.AddRange(LittleInt((int)declaredDataSize));
+            b.AddRange(new byte[actualDataBytes]);
+            return b.ToArray();
+        }
+
+        public static void TestWavLengthFromTheDataChunk()
+        {
+            double d = Read(Wav(16000, 8000, 16000)).Duration;
+            Assert.True(Math.Abs(d - 2) < 0.001, "two seconds of pcm, got " + d);
+        }
+
+        public static void TestWavBelievesTheFileOverTheHeader()
+        {
+            // A wav written to a pipe carries a placeholder size. What is actually
+            // in the file is the only honest answer.
+            double d = Read(Wav(int.MaxValue, 8000, 8000)).Duration;
+            Assert.True(Math.Abs(d - 1) < 0.001, "one second really present, got " + d);
+        }
+
+        static byte[] Asf(long playHundredNs, long prerollMs)
+        {
+            var b = new List<byte>();
+            // The header object: its GUID, a size, an object count and two spare
+            // bytes, none of which the reader looks at beyond the first four.
+            b.AddRange(new byte[]
+            {
+                0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
+                0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C
+            });
+            b.AddRange(new byte[8]);           // size
+            b.AddRange(LittleInt(1));          // one child object
+            b.Add(1); b.Add(2);                // reserved
+
+            b.AddRange(new byte[]              // ASF_File_Properties_Object
+            {
+                0xA1, 0xDC, 0xAB, 0x8C, 0x47, 0xA9, 0xCF, 0x11,
+                0x8E, 0xE4, 0x00, 0xC0, 0x0C, 0x20, 0x53, 0x65
+            });
+            b.AddRange(new byte[8]);           // object size
+            b.AddRange(new byte[16]);          // file id
+            b.AddRange(new byte[8]);           // file size
+            b.AddRange(new byte[8]);           // creation date
+            b.AddRange(new byte[8]);           // data packet count
+            b.AddRange(Little64(playHundredNs));
+            b.AddRange(new byte[8]);           // send duration
+            b.AddRange(Little64(prerollMs));
+            b.AddRange(new byte[24]);          // flags and the packet sizes
+            return b.ToArray();
+        }
+
+        static byte[] Little64(long v)
+        {
+            var b = new byte[8];
+            for (int i = 0; i < 8; i++) b[i] = (byte)(v >> (8 * i));
+            return b;
+        }
+
+        public static void TestWmaLengthDropsThePreroll()
+        {
+            // The play duration includes the preroll — the buffer the player is
+            // told to fill before it starts, which is not part of the music.
+            double d = Read(Asf(40000000L, 1000)).Duration;
+            Assert.True(Math.Abs(d - 3) < 0.001, "three seconds of wma, got " + d);
+        }
+
+        public static void TestAnUnknownContainerHasNoLength()
+        {
+            // Matroska is not parsed here, and saying so honestly is what lets the
+            // decoder fill it in when the track starts.
+            var b = new List<byte>();
+            b.AddRange(new byte[] { 0x1A, 0x45, 0xDF, 0xA3 });
+            b.AddRange(new byte[64]);
+            Assert.Equal(0.0, Read(b.ToArray()).Duration, "an unparsed container");
+        }
     }
 }

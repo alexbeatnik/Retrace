@@ -1,4 +1,4 @@
-﻿// The window: a header of nav tabs over three pages, and a status line.
+// The window: a header of nav tabs over three pages, and a status line.
 //
 // The same three pieces the sister apps use — a header, a page host, cards — so
 // the family reads as one machine. Every page is a hand-placed absolute layout
@@ -19,16 +19,16 @@ namespace Retrace
     {
         // ---- Geometry -----------------------------------------------------------
 
-        public const int WinW = 880, WinH = 700;
-        const int HeaderH = 58;
-        const int StatusH = 26;
-        const int PageH = WinH - HeaderH - StatusH;   // 616
-        const int Pad = 16;
-        const int ContentW = WinW - Pad * 2;          // 848
+        public const int WinW = 900, WinH = 720;
+        const int HeaderH = 60;
+        const int StatusH = 28;
+        const int PageH = WinH - HeaderH - StatusH;   // 632
+        const int Pad = 18;
+        const int ContentW = WinW - Pad * 2;          // 864
 
         // ---- Chrome ---------------------------------------------------------------
 
-        CrtPanel header, pageHost, status;
+        Ground header, pageHost, status;
         NavTab tabPlayer, tabEq, tabSetup;
         readonly List<NavTab> tabs = new List<NavTab>();
         string statusLine = "";
@@ -36,7 +36,7 @@ namespace Retrace
 
         // ---- Player page -----------------------------------------------------------
 
-        CrtPanel pagePlayer;
+        Ground pagePlayer;
         Card nowCard, transportCard, analyserCard, levelsCard, listCard;
         StatStrip stats;
         Bar position, volume, balance;
@@ -47,7 +47,7 @@ namespace Retrace
 
         // ---- Equaliser page ---------------------------------------------------------
 
-        CrtPanel pageEq;
+        Ground pageEq;
         Card eqCard, curveCard;
         Fader preampFader;
         readonly Fader[] bandFaders = new Fader[Equalizer.Bands.Length];
@@ -55,7 +55,7 @@ namespace Retrace
 
         // ---- Settings page ----------------------------------------------------------
 
-        CrtPanel pageSetup;
+        Ground pageSetup;
         Card schemeCard, langCard, updatesCard, aboutCard;
         Btn btnAutoUpdate, btnCheckUpdate, btnInstall;
         readonly List<Btn> schemeButtons = new List<Btn>();
@@ -71,7 +71,7 @@ namespace Retrace
             BuildHeader();
             BuildStatus();
 
-            pageHost = new CrtPanel();
+            pageHost = new Ground();
             pageHost.Dock = DockStyle.Fill;
             Controls.Add(pageHost);
             // Docked children are laid out from the highest index down, each taking
@@ -92,9 +92,10 @@ namespace Retrace
 
         void BuildHeader()
         {
-            header = new CrtPanel();
+            header = new Ground();
             header.Dock = DockStyle.Top;
             header.Height = HeaderH;
+            header.RuleBottom = true;
             header.Paint += PaintHeader;
             Controls.Add(header);
 
@@ -128,32 +129,36 @@ namespace Retrace
                 tabs[i].FitWidth();
                 x -= tabs[i].Width;
                 tabs[i].Left = x;
-                x -= 6;
+                x -= 4;
             }
         }
 
         void PaintHeader(object sender, PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            Ico.Wave(g, new RectangleF(Pad, 18, 30, 22), Theme.Text);
-            using (var f = Theme.UiBold(14f))
-                Theme.DrawTracked(g, "RETRACE", f, new Point(Pad + 40, 19),
-                    Theme.Text, Theme.Track + 1f);
-            using (var pen = new Pen(Theme.Line))
-                g.DrawLine(pen, 0, HeaderH - 1, WinW, HeaderH - 1);
+            // The app's own mark rather than a glyph: the window and the taskbar
+            // icon are then visibly the same thing.
+            Brand.PaintMark(g, new RectangleF(Pad, 14, 32, 32), Theme.Current);
+            using (var f = Theme.UiBold(14.5f))
+                Theme.DrawLabel(g, Brand.Product, f, new Point(Pad + 42, 19), Theme.Text);
         }
 
         void BuildStatus()
         {
-            status = new CrtPanel();
+            status = new Ground();
             status.Dock = DockStyle.Bottom;
             status.Height = StatusH;
+            status.RuleTop = true;
             status.Paint += delegate(object s, PaintEventArgs e)
             {
-                using (var pen = new Pen(Theme.Line)) e.Graphics.DrawLine(pen, 0, 0, WinW, 0);
-                using (var f = Theme.Ui(9f))
-                    Theme.DrawTrackedLeft(e.Graphics, statusLine, f,
-                        new Rectangle(Pad, 0, WinW - Pad * 2, StatusH), Theme.Muted, Theme.Track);
+                // A dot in the accent when something is playing: the one place the
+                // state is visible without reading a word.
+                bool live = engine != null && engine.State == PlayState.Playing;
+                Theme.Fill(e.Graphics, new RectangleF(Pad, StatusH / 2f - 3, 6, 6), 3f,
+                    live ? Theme.Accent : Theme.Disabled);
+                using (var f = Theme.Ui(8.5f))
+                    Theme.Draw(e.Graphics, statusLine, f,
+                        new Rectangle(Pad + 14, 0, WinW - Pad * 2 - 14, StatusH), Theme.Muted);
             };
             Controls.Add(status);
         }
@@ -169,9 +174,9 @@ namespace Retrace
             UpdateStatus();
         }
 
-        CrtPanel NewPage()
+        Ground NewPage()
         {
-            var page = new CrtPanel();
+            var page = new Ground();
             page.Dock = DockStyle.Fill;
             page.Visible = false;
             pageHost.Controls.Add(page);
@@ -180,23 +185,25 @@ namespace Retrace
 
         // ---- Player page ---------------------------------------------------------------
 
-        const int RowY = 164, RowH = 124;
-        const int TransportW = 380, AnalyserW = 240;
-        const int ListY = 364;
+        const int NowY = 12, NowH = 156;
+        const int RowY = 180, RowH = 124;
+        const int TransportW = 384, AnalyserW = 254;
+        const int StatsY = 316, StatsH = 60;
+        const int ListY = 388;
 
         void BuildPlayerPage()
         {
             pagePlayer = NewPage();
 
             nowCard = new Card("");
-            nowCard.SetBounds(Pad, 14, ContentW, 140);
+            nowCard.SetBounds(Pad, NowY, ContentW, NowH);
             nowCard.Paint += PaintNowPlaying;
             pagePlayer.Controls.Add(nowCard);
 
             position = new Bar();
             position.Min = 0;
             position.Max = 1;
-            position.SetBounds(18, 102, ContentW - 36, 24);
+            position.SetBounds(20, 118, ContentW - 40, 24);
             position.ValueChanged += delegate { OnSeekBarMoved(); };
             nowCard.Controls.Add(position);
 
@@ -205,22 +212,20 @@ namespace Retrace
             transportCard.SetBounds(Pad, RowY, TransportW, RowH);
             pagePlayer.Controls.Add(transportCard);
 
-            int keyY = Card.HeaderH + 10;
-            int x = 12;
-            keyPrev = AddKey(ref x, keyY, Ico.Previous, delegate { PlayPrevious(); });
-            keyPlay = AddKey(ref x, keyY, Ico.Play, delegate { TogglePlay(); });
-            keyPlay.Primary = true;
-            keyStop = AddKey(ref x, keyY, Ico.Stop, delegate { StopPlayback(); });
-            keyNext = AddKey(ref x, keyY, Ico.Next, delegate { Advance(false); });
-            keyOpen = AddKey(ref x, keyY, Ico.Eject, delegate { AddFilesDialog(); });
+            int x = 16;
+            keyPrev = AddKey(ref x, Ico.Previous, false, delegate { PlayPrevious(); });
+            keyPlay = AddKey(ref x, Ico.Play, true, delegate { TogglePlay(); });
+            keyStop = AddKey(ref x, Ico.Stop, false, delegate { StopPlayback(); });
+            keyNext = AddKey(ref x, Ico.Next, false, delegate { Advance(false); });
+            keyOpen = AddKey(ref x, Ico.Eject, false, delegate { AddFilesDialog(); });
 
-            // Shuffle and repeat are the same square key, latched: at this size a
+            // Shuffle and repeat are the same round key, latched: at this size a
             // caption beside the glyph would not fit, and the lit state says more
             // than the word would.
             x += 10;
-            keyShuffle = AddKey(ref x, keyY, Ico.Shuffle, delegate { ToggleShuffle(); });
+            keyShuffle = AddKey(ref x, Ico.Shuffle, false, delegate { ToggleShuffle(); });
             keyShuffle.Latch = true;
-            keyRepeat = AddKey(ref x, keyY, Ico.RepeatAll, delegate { CycleRepeat(); });
+            keyRepeat = AddKey(ref x, Ico.RepeatAll, false, delegate { CycleRepeat(); });
             keyRepeat.Latch = true;
 
             int analyserX = Pad + TransportW + 12;
@@ -229,7 +234,7 @@ namespace Retrace
             pagePlayer.Controls.Add(analyserCard);
 
             analyser = new Analyser();
-            analyser.SetBounds(10, Card.HeaderH, AnalyserW - 20, RowH - Card.HeaderH - 8);
+            analyser.SetBounds(12, Card.HeaderH, AnalyserW - 24, RowH - Card.HeaderH - 12);
             analyser.ModeChanged += delegate { SaveSettings(); };
             analyserCard.Controls.Add(analyser);
 
@@ -240,7 +245,7 @@ namespace Retrace
             pagePlayer.Controls.Add(levelsCard);
 
             volume = new Bar();
-            volume.SetBounds(16, 58, levelsCard.Width - 32, 20);
+            volume.SetBounds(16, 56, levelsCard.Width - 32, 22);
             volume.ValueChanged += delegate { OnVolumeMoved(); };
             levelsCard.Controls.Add(volume);
 
@@ -249,12 +254,12 @@ namespace Retrace
             balance.Max = 1;
             balance.FromCentre = true;
             balance.Detent = 0.05;
-            balance.SetBounds(16, 96, levelsCard.Width - 32, 20);
+            balance.SetBounds(16, 94, levelsCard.Width - 32, 22);
             balance.ValueChanged += delegate { OnBalanceMoved(); };
             levelsCard.Controls.Add(balance);
 
             stats = new StatStrip();
-            stats.SetBounds(Pad, 298, ContentW, 56);
+            stats.SetBounds(Pad, StatsY, ContentW, StatsH);
             pagePlayer.Controls.Add(stats);
 
             BuildListCard();
@@ -269,15 +274,15 @@ namespace Retrace
         void BuildListCard()
         {
             listCard = new Card("");
-            listCard.SetBounds(Pad, ListY, ContentW, PageH - ListY - 14);
+            listCard.SetBounds(Pad, ListY, ContentW, PageH - ListY - 12);
             pagePlayer.Controls.Add(listCard);
 
             // Snapped to whole rows: a list a fraction of a row too tall shows a
             // sliced track along its bottom edge, which reads as a clipping bug
             // rather than as more to scroll.
-            int rows = (listCard.Height - Card.HeaderH - 14) / TrackList.RowH;
+            int rows = (listCard.Height - Card.HeaderH - 12) / TrackList.RowH;
             list = new TrackList();
-            list.SetBounds(14, Card.HeaderH + 2, ContentW - 28, rows * TrackList.RowH);
+            list.SetBounds(14, Card.HeaderH, ContentW - 28, rows * TrackList.RowH);
             list.Source = playlist;
             list.Activated += delegate(object s, int index) { PlayAt(index); };
             list.SelectionChanged += delegate { UpdateListChrome(); };
@@ -288,6 +293,9 @@ namespace Retrace
             listCard.Controls.Add(list);
 
             btnAdd = AddListButton("list.add", Ico.File, delegate { AddFilesDialog(); });
+            // The one filled button in the row: putting music into an empty
+            // player is the action the page is really about.
+            btnAdd.Primary = true;
             btnFolder = AddListButton("list.folder", Ico.Folder, delegate { AddFolderDialog(); });
             btnLoad = AddListButton("list.load", Ico.Load, delegate { LoadPlaylistDialog(); });
             btnSave = AddListButton("list.save", Ico.Save, delegate { SavePlaylistDialog(); });
@@ -300,8 +308,9 @@ namespace Retrace
             var b = new Btn(Lang.T(key));
             b.Name = key;
             b.Icon = icon;
-            b.Height = 24;
-            b.Top = 4;
+            b.Height = 26;
+            b.Top = 5;
+            b.Font = Theme.UiBold(8.5f);
             b.Click += onClick;
             listCard.Controls.Add(b);
             return b;
@@ -312,7 +321,7 @@ namespace Retrace
         void LayoutListButtons()
         {
             var row = new[] { btnClear, btnRemove, btnSave, btnLoad, btnFolder, btnAdd };
-            int x = listCard.Width - 14;
+            int x = listCard.Width - 16;
             foreach (Btn b in row)
             {
                 b.FitWidth(74);
@@ -322,13 +331,20 @@ namespace Retrace
             }
         }
 
-        KeyBtn AddKey(ref int x, int y, IconDraw icon, EventHandler onClick)
+        // The play key is the one control on the page the eye should land on
+        // first, so it is both larger and the only filled one.
+        const int KeySize = 42, PrimarySize = 50;
+
+        KeyBtn AddKey(ref int x, IconDraw icon, bool primary, EventHandler onClick)
         {
             var key = new KeyBtn(icon);
-            key.SetBounds(x, y, 46, 46);
+            int size = primary ? PrimarySize : KeySize;
+            int centre = Card.HeaderH + (RowH - Card.HeaderH - 12) / 2;
+            key.Primary = primary;
+            key.SetBounds(x, centre - size / 2, size, size);
             key.Click += onClick;
             transportCard.Controls.Add(key);
-            x += 46 + 5;
+            x += size + 6;
             return key;
         }
 
@@ -338,9 +354,19 @@ namespace Retrace
             Track t = playlist.Current;
             int w = nowCard.Width;
 
-            using (var big = Theme.UiBold(15f))
-            using (var mid = Theme.Ui(10f))
-            using (var clock = Theme.UiBold(15f))
+            // A tile rather than cover art: reading the art out of a tag means a
+            // decoder and a cache, and this says "a track is loaded" at the same
+            // glance for nothing.
+            var tile = new RectangleF(20, 40, 68, 68);
+            Theme.Fill(g, tile, Theme.RadiusSmall + 2, t != null ? Theme.AccentSoft : Theme.Sunken);
+            Theme.Outline(g, tile, Theme.RadiusSmall + 2, Theme.CardLine);
+            Ico.Wave(g, new RectangleF(tile.X + 13, tile.Y + 22, 42, 24),
+                t != null ? Theme.AccentHot : Theme.Disabled);
+
+            using (var big = Theme.UiBold(14.5f))
+            using (var mid = Theme.Ui(9.5f))
+            using (var clock = Theme.DigitsBold(18f))
+            using (var small = Theme.Digits(10f))
             {
                 double length = CurrentDuration();
                 double at = position.Dragging ? position.Value : engine.Position;
@@ -349,12 +375,15 @@ namespace Retrace
                 string total = length > 0 ? Util.Time(length) : "--:--";
 
                 int cw = Theme.Measure(shown, clock);
-                int tw = Theme.Measure(total, mid);
-                int clockLeft = w - 24 - Math.Max(cw, tw);
+                int tw = Theme.Measure(total, small);
+                int clockLeft = w - 26 - Math.Max(cw, tw);
+
+                const int textX = 104;
+                int textW = Math.Max(40, clockLeft - textX - 20);
 
                 string title = t != null ? t.Label : Lang.T("now.nothing");
-                Theme.Draw(g, title, big, new Rectangle(18, 42, clockLeft - 34, 28),
-                    t != null ? Theme.Bright : Theme.Muted);
+                Theme.Draw(g, title, big, new Rectangle(textX, 44, textW, 26),
+                    t != null ? Theme.Text : Theme.Muted);
 
                 string under;
                 if (t != null)
@@ -369,17 +398,15 @@ namespace Retrace
                     under = string.Join("   ·   ", parts.ToArray());
                 }
                 else under = Lang.T("now.hint");
-                Theme.Draw(g, under, mid, new Rectangle(18, 72, clockLeft - 34, 22), Theme.Muted);
+                Theme.Draw(g, under, mid, new Rectangle(textX, 76, textW, 20), Theme.Muted);
 
-                // Right-aligned and monospace, so the layout does not shuffle as
-                // the digits change.
-                Theme.Draw(g, shown, clock, new Rectangle(w - 24 - cw, 40, cw + 4, 28), Theme.Text);
-                Theme.Draw(g, total, mid, new Rectangle(w - 24 - tw, 74, tw + 4, 20), Theme.Muted);
+                // Right-aligned and set in the monospace face, so the layout does
+                // not shuffle sideways as the digits change.
+                Theme.DrawRight(g, shown, clock, new Rectangle(w - 26 - cw, 42, cw + 4, 28),
+                    t != null ? Theme.Text : Theme.Muted);
+                Theme.DrawRight(g, total, small, new Rectangle(w - 26 - tw, 76, tw + 4, 20),
+                    Theme.Muted);
             }
-
-            using (var f = Theme.UiBold(9f))
-                Theme.DrawTracked(g, Lang.T("card.now").ToUpperInvariant(), f, new Point(14, 11),
-                    Theme.Bright, Theme.Track);
         }
 
         void PaintLevels(object sender, PaintEventArgs e)
@@ -387,23 +414,21 @@ namespace Retrace
             Graphics g = e.Graphics;
             int w = levelsCard.Width;
             using (var cap = Theme.UiBold(8f))
-            using (var val = Theme.Ui(9.5f))
+            using (var val = Theme.UiBold(9f))
             {
-                Theme.DrawTracked(g, Lang.T("lvl.volume").ToUpperInvariant(), cap,
-                    new Point(16, 44), Theme.Muted, Theme.Track);
+                Theme.DrawLabel(g, Lang.T("lvl.volume").ToUpperInvariant(), cap,
+                    new Point(18, 42), Theme.Muted);
                 string vol = Math.Round(volume.Value * 100)
                     .ToString(CultureInfo.InvariantCulture) + "%";
-                int vw = Theme.Measure(vol, val);
-                Theme.Draw(g, vol, val, new Rectangle(w - 18 - vw, 40, vw + 4, 18), Theme.Text);
+                Theme.DrawRight(g, vol, val, new Rectangle(w - 100, 40, 82, 16), Theme.Text);
 
-                Theme.DrawTracked(g, Lang.T("lvl.balance").ToUpperInvariant(), cap,
-                    new Point(16, 82), Theme.Muted, Theme.Track);
+                Theme.DrawLabel(g, Lang.T("lvl.balance").ToUpperInvariant(), cap,
+                    new Point(18, 80), Theme.Muted);
                 double b = balance.Value;
                 string bal = Math.Abs(b) < 0.01 ? Lang.T("lvl.centre")
                     : (b < 0 ? "L" : "R") + " "
                       + Math.Round(Math.Abs(b) * 100).ToString(CultureInfo.InvariantCulture);
-                int bw = Theme.Measure(bal, val);
-                Theme.Draw(g, bal, val, new Rectangle(w - 18 - bw, 78, bw + 4, 18), Theme.Text);
+                Theme.DrawRight(g, bal, val, new Rectangle(w - 100, 78, 82, 16), Theme.Text);
             }
         }
 
@@ -414,11 +439,11 @@ namespace Retrace
             pageEq = NewPage();
 
             eqCard = new Card("");
-            eqCard.SetBounds(Pad, 14, ContentW, 330);
+            eqCard.SetBounds(Pad, 12, ContentW, 350);
             pageEq.Controls.Add(eqCard);
 
             btnEqOn = new Btn("");
-            btnEqOn.SetBounds(14, Card.HeaderH + 8, 96, 30);
+            btnEqOn.SetBounds(18, Card.HeaderH + 10, 96, 32);
             btnEqOn.Latch = true;
             btnEqOn.Click += delegate
             {
@@ -429,12 +454,12 @@ namespace Retrace
             eqCard.Controls.Add(btnEqOn);
 
             btnEqPreset = new Btn("");
-            btnEqPreset.SetBounds(118, Card.HeaderH + 8, 116, 30);
+            btnEqPreset.SetBounds(122, Card.HeaderH + 10, 120, 32);
             btnEqPreset.Click += delegate { ShowPresetMenu(); };
             eqCard.Controls.Add(btnEqPreset);
 
             btnEqReset = new Btn("");
-            btnEqReset.SetBounds(242, Card.HeaderH + 8, 106, 30);
+            btnEqReset.SetBounds(250, Card.HeaderH + 10, 110, 32);
             btnEqReset.Click += delegate
             {
                 engine.Eq.SetPreamp(0);
@@ -444,10 +469,10 @@ namespace Retrace
             };
             eqCard.Controls.Add(btnEqReset);
 
-            const int faderY = 96, faderH = 210, faderW = 58;
+            const int faderY = 100, faderH = 224, faderW = 58;
             preampFader = new Fader();
             preampFader.Label = "PRE";
-            preampFader.SetBounds(20, faderY, faderW, faderH);
+            preampFader.SetBounds(24, faderY, faderW, faderH);
             preampFader.ValueChanged += delegate
             {
                 if (restoring) return;
@@ -457,8 +482,8 @@ namespace Retrace
             };
             eqCard.Controls.Add(preampFader);
 
-            int bandsX = 130;
-            int step = (ContentW - 20 - bandsX) / Equalizer.Bands.Length;
+            int bandsX = 136;
+            int step = (ContentW - 24 - bandsX) / Equalizer.Bands.Length;
             for (int i = 0; i < Equalizer.Bands.Length; i++)
             {
                 int index = i;   // captured per iteration, not shared by all handlers
@@ -477,7 +502,7 @@ namespace Retrace
             }
 
             curveCard = new Card("");
-            curveCard.SetBounds(Pad, 356, ContentW, PageH - 370);
+            curveCard.SetBounds(Pad, 374, ContentW, PageH - 374 - 12);
             curveCard.Paint += PaintCurve;
             pageEq.Controls.Add(curveCard);
         }
@@ -488,45 +513,64 @@ namespace Retrace
             return hz.ToString("0", CultureInfo.InvariantCulture);
         }
 
+        /// <summary>The response the faders add up to: a smooth line with the area
+        /// under it washed in the accent, which is how a plot reads at a glance
+        /// when nobody is going to stop and follow the curve.</summary>
         void PaintCurve(object sender, PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            var box = new Rectangle(16, Card.HeaderH + 6,
-                curveCard.Width - 32, curveCard.Height - Card.HeaderH - 20);
-            if (box.Width <= 4 || box.Height <= 4) return;
+            var box = new Rectangle(18, Card.HeaderH + 6,
+                curveCard.Width - 36, curveCard.Height - Card.HeaderH - 24);
+            if (box.Width <= 8 || box.Height <= 8) return;
 
-            using (var b = new SolidBrush(Theme.Sunken)) g.FillRectangle(b, box);
+            Theme.Fill(g, box, Theme.RadiusSmall, Theme.Sunken);
             int mid = box.Y + box.Height / 2;
-            using (var pen = new Pen(Theme.Line))
+            using (var pen = new Pen(Theme.CardLine))
             {
                 pen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
                 for (int i = 1; i < 4; i++)
-                    g.DrawLine(pen, box.X, box.Y + box.Height * i / 4,
-                        box.Right - 1, box.Y + box.Height * i / 4);
+                    g.DrawLine(pen, box.X + 8, box.Y + box.Height * i / 4,
+                        box.Right - 8, box.Y + box.Height * i / 4);
             }
 
             int n = Equalizer.Bands.Length;
             var curve = new double[n];
             for (int i = 0; i < n; i++)
-                curve[i] = -engine.Eq.GetBand(i) / Equalizer.MaxGainDb * (box.Height / 2 - 4);
+                curve[i] = -engine.Eq.GetBand(i) / Equalizer.MaxGainDb * (box.Height / 2 - 6);
 
-            Color ink = engine.Eq.Enabled ? Theme.Text : Theme.Line;
-            using (var line = new SolidBrush(ink))
-                for (int x = 0; x < box.Width; x++)
-                {
-                    double t = x * (n - 1) / (double)(box.Width - 1);
-                    int i = (int)t;
-                    if (i > n - 2) i = n - 2;
-                    double f = t - i;
-                    // A straight run between the points would be a zigzag; a
-                    // Catmull-Rom spline gives the smooth shape a real plot has.
-                    double v = Spline(curve[Math.Max(0, i - 1)], curve[i],
-                        curve[i + 1], curve[Math.Min(n - 1, i + 2)], f);
-                    int py = mid + (int)Math.Round(v);
-                    if (py < box.Y) py = box.Y;
-                    if (py >= box.Bottom) py = box.Bottom - 1;
-                    g.FillRectangle(line, box.X + x, py - 1, 1, 3);
-                }
+            var pts = new PointF[box.Width];
+            for (int x = 0; x < box.Width; x++)
+            {
+                double t = x * (n - 1) / (double)(box.Width - 1);
+                int i = (int)t;
+                if (i > n - 2) i = n - 2;
+                double f = t - i;
+                // A straight run between the points would be a zigzag; a
+                // Catmull-Rom spline gives the smooth shape a real plot has.
+                double v = Spline(curve[Math.Max(0, i - 1)], curve[i],
+                    curve[i + 1], curve[Math.Min(n - 1, i + 2)], f);
+                float py = mid + (float)v;
+                if (py < box.Y + 2) py = box.Y + 2;
+                if (py > box.Bottom - 2) py = box.Bottom - 2;
+                pts[x] = new PointF(box.X + x, py);
+            }
+
+            bool on = engine.Eq.Enabled;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            Region clip = g.Clip;
+            g.SetClip(box);
+            using (var area = new System.Drawing.Drawing2D.GraphicsPath())
+            {
+                area.AddLines(pts);
+                area.AddLine(pts[pts.Length - 1].X, mid, pts[0].X, mid);
+                area.CloseFigure();
+                using (var b = new SolidBrush(on ? Color.FromArgb(46, Theme.Accent)
+                                                 : Color.FromArgb(24, Theme.Muted)))
+                    g.FillPath(b, area);
+            }
+            using (var pen = new Pen(on ? Theme.AccentHot : Theme.Disabled, 2f))
+                g.DrawLines(pen, pts);
+            g.Clip = clip;
         }
 
         static double Spline(double a, double b, double c, double d, double t)
@@ -584,16 +628,15 @@ namespace Retrace
             pageSetup = NewPage();
 
             schemeCard = new Card("");
-            schemeCard.SetBounds(Pad, 14, ContentW, 110);
+            schemeCard.SetBounds(Pad, 12, ContentW, 116);
             pageSetup.Controls.Add(schemeCard);
 
-            int x = 14;
+            int x = 18;
             foreach (Palette p in Palette.All)
             {
                 Palette scheme = p;   // captured per iteration
-                var b = new Btn(p.Caption);
-                b.SetBounds(x, Card.HeaderH + 14, 124, 34);
-                b.Latch = true;
+                var b = new SchemeBtn(p);
+                b.SetBounds(x, Card.HeaderH + 16, 128, 36);
                 b.Click += delegate
                 {
                     Theme.Use(scheme.Id);
@@ -602,32 +645,32 @@ namespace Retrace
                 };
                 schemeCard.Controls.Add(b);
                 schemeButtons.Add(b);
-                x += 132;
+                x += 136;
             }
 
             langCard = new Card("");
-            langCard.SetBounds(Pad, 136, ContentW, 102);
+            langCard.SetBounds(Pad, 140, ContentW, 108);
             pageSetup.Controls.Add(langCard);
 
             btnEn = new Btn("English");
-            btnEn.SetBounds(14, Card.HeaderH + 12, 160, 34);
+            btnEn.SetBounds(18, Card.HeaderH + 14, 160, 36);
             btnEn.Latch = true;
             btnEn.Click += delegate { SetLanguage(Lang.English); };
             langCard.Controls.Add(btnEn);
 
             btnUk = new Btn("Українська");
-            btnUk.SetBounds(182, Card.HeaderH + 12, 160, 34);
+            btnUk.SetBounds(186, Card.HeaderH + 14, 160, 36);
             btnUk.Latch = true;
             btnUk.Click += delegate { SetLanguage(Lang.Ukrainian); };
             langCard.Controls.Add(btnUk);
 
             updatesCard = new Card("");
-            updatesCard.SetBounds(Pad, 250, ContentW, 124);
+            updatesCard.SetBounds(Pad, 260, ContentW, 130);
             updatesCard.Paint += PaintUpdates;
             pageSetup.Controls.Add(updatesCard);
 
             btnAutoUpdate = new Btn("");
-            btnAutoUpdate.SetBounds(14, Card.HeaderH + 12, 300, 34);
+            btnAutoUpdate.SetBounds(18, Card.HeaderH + 12, 300, 34);
             btnAutoUpdate.Latch = true;
             btnAutoUpdate.Click += delegate
             {
@@ -643,17 +686,17 @@ namespace Retrace
             updatesCard.Controls.Add(btnAutoUpdate);
 
             btnCheckUpdate = new Btn("");
-            btnCheckUpdate.SetBounds(322, Card.HeaderH + 12, 210, 34);
+            btnCheckUpdate.SetBounds(326, Card.HeaderH + 12, 210, 34);
             btnCheckUpdate.Click += delegate { CheckForUpdatesNow(); };
             updatesCard.Controls.Add(btnCheckUpdate);
 
             btnInstall = new Btn("");
-            btnInstall.SetBounds(540, Card.HeaderH + 12, 280, 34);
+            btnInstall.SetBounds(544, Card.HeaderH + 12, 290, 34);
             btnInstall.Click += delegate { InstallOrUninstall(); };
             updatesCard.Controls.Add(btnInstall);
 
             aboutCard = new Card("");
-            aboutCard.SetBounds(Pad, 386, ContentW, 160);
+            aboutCard.SetBounds(Pad, 402, ContentW, 170);
             aboutCard.Paint += PaintAbout;
             pageSetup.Controls.Add(aboutCard);
         }
@@ -664,7 +707,7 @@ namespace Retrace
         {
             using (var f = Theme.Ui(9.5f))
                 Theme.Draw(e.Graphics, updateNote, f,
-                    new Rectangle(16, Card.HeaderH + 56, ContentW - 40, 22), Theme.Muted);
+                    new Rectangle(18, Card.HeaderH + 56, ContentW - 44, 22), Theme.Muted);
         }
 
         void RefreshSchemeButtons()
@@ -691,18 +734,18 @@ namespace Retrace
         void PaintAbout(object sender, PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            using (var f = Theme.Ui(10f))
-            using (var bold = Theme.UiBold(11f))
+            using (var f = Theme.Ui(9.5f))
+            using (var bold = Theme.UiBold(11.5f))
             {
-                int y = Card.HeaderH + 12;
-                Theme.Draw(g, Brand.Product + "  " + Brand.Version, bold,
-                    new Rectangle(16, y, 400, 22), Theme.Text);
+                int y = Card.HeaderH + 14;
+                Theme.DrawLabel(g, Brand.Product + "  " + Brand.Version, bold,
+                    new Point(18, y), Theme.Text);
                 Theme.Draw(g, Lang.T("about.line1"), f,
-                    new Rectangle(16, y + 30, 760, 20), Theme.Muted);
+                    new Rectangle(18, y + 30, 780, 20), Theme.Muted);
                 Theme.Draw(g, Lang.T("about.line2"), f,
-                    new Rectangle(16, y + 52, 760, 20), Theme.Muted);
+                    new Rectangle(18, y + 52, 780, 20), Theme.Muted);
                 Theme.Draw(g, Lang.T("about.decoder"), f,
-                    new Rectangle(16, y + 82, 760, 20), Theme.Line);
+                    new Rectangle(18, y + 84, 780, 20), Theme.Disabled);
             }
         }
 
@@ -746,8 +789,7 @@ namespace Retrace
             foreach (NavTab tab in tabs) tab.Text = Lang.T(tab.Name);
             LayoutTabs();
 
-            // The now-playing card draws its own header, so the clock can share
-            // the row with it.
+            nowCard.Header = Lang.T("card.now");
             transportCard.Header = Lang.T("card.transport");
             analyserCard.Header = Lang.T("card.output");
             levelsCard.Header = Lang.T("card.levels");
@@ -772,9 +814,9 @@ namespace Retrace
             LayoutListButtons();
 
             btnEqPreset.Text = Lang.T("eq.preset");
-            btnEqPreset.FitWidth(116);
+            btnEqPreset.FitWidth(120);
             btnEqReset.Text = Lang.T("eq.reset");
-            btnEqReset.FitWidth(106);
+            btnEqReset.FitWidth(110);
             btnEqReset.Left = btnEqPreset.Left + btnEqPreset.Width + 8;
 
             RefreshEq();
@@ -906,8 +948,38 @@ namespace Retrace
         }
     }
 
+    /// <summary>
+    /// A scheme button: the ordinary latching button with a disc of the colour it
+    /// selects painted on it. A row of six identically-coloured buttons cannot say
+    /// which is which, and translating the names would be worse — a scheme is
+    /// chosen by looking at it.
+    /// </summary>
+    class SchemeBtn : Btn
+    {
+        readonly Palette scheme;
+
+        public SchemeBtn(Palette p) : base(p.Caption)
+        {
+            scheme = p;
+            Latch = true;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            Graphics g = e.Graphics;
+            var dot = new RectangleF(Width - 28, Height / 2f - 7, 14, 14);
+            using (var b = new SolidBrush(scheme.Accent)) g.FillEllipse(b, dot);
+            // The chosen scheme fills its own button with its own hue, so the dot
+            // on it is the accent on the accent: a thick ring is what keeps it
+            // visible there, and a hairline is enough on all the others.
+            using (var pen = new Pen(On ? Theme.OnAccent : Theme.CardLine, On ? 2f : 1f))
+                g.DrawEllipse(pen, dot);
+        }
+    }
+
     /// <summary>The system menu colours are a white slab against this theme; these
-    /// are the terminal's own.</summary>
+    /// are the app's own.</summary>
     class DarkMenuColours : ProfessionalColorTable
     {
         public override Color ToolStripDropDownBackground { get { return Theme.Card; } }
@@ -917,9 +989,9 @@ namespace Retrace
         public override Color MenuItemSelected { get { return Theme.Subtle; } }
         public override Color MenuItemSelectedGradientBegin { get { return Theme.Subtle; } }
         public override Color MenuItemSelectedGradientEnd { get { return Theme.Subtle; } }
-        public override Color MenuItemBorder { get { return Theme.Text; } }
-        public override Color MenuBorder { get { return Theme.Line; } }
-        public override Color SeparatorDark { get { return Theme.Line; } }
+        public override Color MenuItemBorder { get { return Theme.Accent; } }
+        public override Color MenuBorder { get { return Theme.CardLine; } }
+        public override Color SeparatorDark { get { return Theme.CardLine; } }
         public override Color SeparatorLight { get { return Theme.Card; } }
     }
 }

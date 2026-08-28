@@ -200,7 +200,7 @@ namespace Retrace
         public static void List(Graphics g, RectangleF r, Color c)
         {
             var b = Box(r, 0.62f);
-            g.SmoothingMode = SmoothingMode.None;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
             float gap = b.Height / 3f;
             float h = Math.Max(1.2f, gap * 0.40f);
             using (var br = new SolidBrush(c))
@@ -216,7 +216,7 @@ namespace Retrace
         public static void Equaliser(Graphics g, RectangleF r, Color c)
         {
             var b = Box(r, 0.64f);
-            g.SmoothingMode = SmoothingMode.None;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
             float step = b.Width / 3f;
             float w = Math.Max(1.4f, step * 0.30f);
             var heights = new[] { 0.45f, 0.85f, 0.62f };
@@ -253,12 +253,15 @@ namespace Retrace
                                         cy + (float)(Math.Sin(a) * rad));
                 }
                 path.AddPolygon(pts);
+                // The bore is a second figure in the same path: an alternate fill
+                // leaves a real hole, where painting the card colour back over the
+                // middle would show as a disc the moment the glyph sits on
+                // anything else — which on a nav tab pill it does.
+                path.AddEllipse(cx - outer * 0.34f, cy - outer * 0.34f,
+                    outer * 0.68f, outer * 0.68f);
+                path.FillMode = FillMode.Alternate;
                 using (var br = new SolidBrush(c)) g.FillPath(br, path);
             }
-            // The bore, cut out by painting the card ground back over the middle.
-            using (var br = new SolidBrush(Theme.Card))
-                g.FillEllipse(br, cx - outer * 0.34f, cy - outer * 0.34f,
-                    outer * 0.68f, outer * 0.68f);
         }
 
         // ---- Small marks ---------------------------------------------------------
@@ -346,19 +349,23 @@ namespace Retrace
                     new PointF(b.Right, trayY - b.Height * 0.10f) });
         }
 
-        /// <summary>The mark on the window's own header: a phosphor waveform.</summary>
+        /// <summary>A waveform: the app's own mark, and what sits on the
+        /// now-playing tile in place of cover art. Rounded caps rather than square
+        /// ones — it is the one glyph drawn large enough for the difference to
+        /// read as anything other than blur.</summary>
         public static void Wave(Graphics g, RectangleF r, Color c)
         {
-            g.SmoothingMode = SmoothingMode.None;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
             var heights = new[] { 0.30f, 0.62f, 0.88f, 0.54f, 0.96f, 0.42f, 0.70f, 0.34f };
             float step = r.Width / heights.Length;
-            float w = Math.Max(1.5f, step * 0.52f);
+            float w = Math.Max(1.5f, step * 0.46f);
             using (var br = new SolidBrush(c))
                 for (int i = 0; i < heights.Length; i++)
                 {
-                    float h = r.Height * heights[i];
-                    g.FillRectangle(br, r.X + step * i + (step - w) / 2f,
+                    float h = Math.Max(w, r.Height * heights[i]);
+                    var bar = new RectangleF(r.X + step * i + (step - w) / 2f,
                         r.Y + (r.Height - h) / 2f, w, h);
+                    using (var path = Theme.Round(bar, w / 2f)) g.FillPath(br, path);
                 }
         }
     }
