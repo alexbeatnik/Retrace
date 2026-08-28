@@ -1,7 +1,6 @@
-// The colour schemes. Everything but the near-black grounds is derived from one
-// base hue, so these check the derivation rather than any particular colour —
-// a new palette is one line, and it has to come out usable without being
-// hand-checked.
+// The colour schemes. A palette is one accent hue and the tones derived from
+// it, so these check the derivation rather than any particular colour — a new
+// scheme is one line, and it has to come out usable without being hand-checked.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -10,11 +9,16 @@ namespace Retrace.Tests
 {
     public static class PaletteTests
     {
-        public static void TestAmberIsTheDefault()
+        public static void TestBlueIsTheDefault()
         {
-            // The player is meant to sit beside WindowsStalker, which is amber.
-            Assert.Equal("amber", Palette.All[0].Id, "the first scheme");
-            Assert.Equal("amber", Palette.ById("nonsense").Id, "an unknown id falls back to it");
+            // The player is meant to sit beside the two tools next door, which
+            // are blue.
+            Assert.Equal("blue", Palette.All[0].Id, "the first scheme");
+            Assert.Equal("blue", Palette.ById("nonsense").Id, "an unknown id falls back to it");
+            // A settings file written by the amber build names a scheme that no
+            // longer exists under that hue; falling back rather than throwing is
+            // what lets an old file still open the player.
+            Assert.Equal("blue", Palette.ById("ice").Id, "a scheme that has since gone");
         }
 
         public static void TestEveryIdIsUniqueAndResolvable()
@@ -35,37 +39,53 @@ namespace Retrace.Tests
             Assert.Equal("green", Palette.ById("Green").Id, "mixed case");
         }
 
-        public static void TestDerivedTonesAreOrdered()
+        public static void TestHotIsLighterThanTheAccent()
         {
-            // Bright must read as lighter than Text, and Muted and Line as
-            // progressively darker, or the hierarchy the whole UI leans on
-            // inverts and captions come out louder than headings.
+            // Hover has to read as brighter than rest in every scheme, or the
+            // controls stop answering the pointer.
+            foreach (Palette p in Palette.All)
+                Assert.True(Luma(p.Hot) > Luma(p.Accent), p.Id + ": hot is not lighter");
+        }
+
+        public static void TestTheSoftWashIsTranslucent()
+        {
+            // The wash goes over a card, a list row and the page ground; mixed
+            // against one of them it would read as a patch on the other two.
             foreach (Palette p in Palette.All)
             {
-                double bright = Luma(p.Bright), text = Luma(p.Text);
-                double muted = Luma(p.Muted), line = Luma(p.Line);
-                Assert.True(bright > text, p.Id + ": bright is not lighter than text");
-                Assert.True(text > muted, p.Id + ": muted is not darker than text");
-                Assert.True(muted > line, p.Id + ": line is not darker than muted");
+                Assert.True(p.Soft.A > 0 && p.Soft.A < 90, p.Id + ": the wash is not a wash");
+                Assert.Equal(p.Accent.R, p.Soft.R, p.Id + ": the wash is not the accent hue");
             }
         }
 
-        public static void TestTextIsReadableOnTheCard()
+        public static void TestAccentStandsOffTheCard()
         {
-            // Every scheme's phosphor has to stand off the near-black card, or the
-            // app is unreadable in it.
+            // Every scheme's accent is used as text on a card — a lit tab, a
+            // playing row, the clock's own hue — so it has to be legible there.
             foreach (Palette p in Palette.All)
-                Assert.True(Luma(p.Text) - Luma(Theme.Card) > 60,
-                    p.Id + ": text does not stand off the card");
+                Assert.True(Luma(p.Accent) - Luma(Theme.Card) > 60,
+                    p.Id + ": the accent does not stand off the card");
         }
 
         public static void TestOnAccentIsReadableOnTheFill()
         {
-            // A nav tab and a primary button fill with Text and print OnAccent on
-            // top; that pair has to stay legible in every scheme.
+            // A nav tab and a primary button fill with the accent and print
+            // OnAccent on top; that pair has to stay legible in every scheme, in
+            // whichever direction the derivation went.
             foreach (Palette p in Palette.All)
-                Assert.True(Luma(p.Text) - Luma(p.OnAccent) > 80,
+                Assert.True(Math.Abs(Luma(p.Accent) - Luma(p.OnAccent)) > 80,
                     p.Id + ": text on the accent fill has too little contrast");
+        }
+
+        public static void TestTheFixedTonesStayOrdered()
+        {
+            // Text over muted over disabled over the border is the hierarchy the
+            // whole UI leans on, and none of it follows the scheme.
+            Assert.True(Luma(Theme.Text) > Luma(Theme.Muted), "muted is not darker than text");
+            Assert.True(Luma(Theme.Muted) > Luma(Theme.Disabled), "disabled is not darker than muted");
+            Assert.True(Luma(Theme.Disabled) > Luma(Theme.CardLine), "the rule is not the darkest");
+            Assert.True(Luma(Theme.Card) > Luma(Theme.Bg), "a card does not lift off the page");
+            Assert.True(Luma(Theme.Bg) > Luma(Theme.Sunken), "a well does not sink into the page");
         }
 
         public static void TestUseSwitchesAndAnnounces()
@@ -93,7 +113,7 @@ namespace Retrace.Tests
         }
 
         /// <summary>Perceived brightness — the usual weighting, which is close
-        /// enough for ordering two tones of the same hue.</summary>
+        /// enough for ordering two tones against each other.</summary>
         static double Luma(Color c)
         {
             return 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;

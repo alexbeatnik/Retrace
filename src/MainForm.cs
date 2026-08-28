@@ -207,7 +207,10 @@ namespace Retrace
 
             BuildUi();
             ApplySettingsToUi();
-            Theme.DarkTitleBar(this);
+            // The caption text is painted out: the in-window header already
+            // carries the wordmark, and Form.Text still names the window for the
+            // taskbar, Alt+Tab and screen readers.
+            Theme.DarkTitleBar(this, true);
 
             engine.TrackEnded += delegate { OnUi(delegate { Advance(true); }); };
 

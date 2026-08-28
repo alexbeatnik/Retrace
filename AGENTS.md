@@ -1,7 +1,7 @@
 # AGENTS.md — guide for AI coding agents (and new contributors)
 
-A compact offline audio player for Windows, wearing the phosphor-terminal card
-look of its sister projects WindowsStalker and AV. One ~155 KB portable exe,
+A compact offline audio player for Windows, wearing the neutral dark card look
+of its sister projects WinCleaner and AV. One ~160 KB portable exe,
 **zero dependencies, zero toolchains**: it builds with the `csc.exe` compiler
 that ships inside Windows (.NET Framework 4.8). Keep it that way. Licensed under
 Apache 2.0 (`LICENSE`).
@@ -56,8 +56,8 @@ never drift from the mark drawn in the app. Note that the icon step uses
 
 Two halves that share nothing but a couple of plain-data types: an audio engine
 with no Windows-UI dependency, and a hand-drawn UI with no audio knowledge. The
-look has been reworked twice; the engine survived both untouched, and that is
-the property to preserve.
+look has been reworked three times; the engine survived every one of them
+untouched, and that is the property to preserve.
 
 | File | Concern |
 |------|---------|
@@ -67,10 +67,10 @@ the property to preserve.
 | `src/Dsp.cs` | downmix, the ten-band equaliser, FFT, meter ballistics — pure arithmetic |
 | `src/AudioEngine.cs` | the per-track thread that joins the three together |
 | `src/Playlist.cs` | track order, shuffle, repeat modes, M3U — pure |
-| `src/Tags.cs` | ID3v2/ID3v1/Vorbis/MP4 parsing — pure |
+| `src/Tags.cs` | ID3v2/ID3v1/Vorbis/MP4 parsing and track durations — pure |
 | `src/Util.cs` | time and settings formatting, path handling, shell interop |
 | `src/Lang.cs` | the English/Ukrainian string table |
-| `src/Theme.cs` | `Palette`, the derived tones, and every drawing primitive |
+| `src/Theme.cs` | `Palette`, the accent tones derived from it, and every drawing primitive |
 | `src/Controls.cs` | cards, tabs, buttons, sliders, the analyser, the track list |
 | `src/Icons.cs` | every glyph, as vector paths |
 | `src/Branding.cs` | the app mark and the ICO writer |
@@ -117,18 +117,31 @@ child shell is justified.
 
 ### Colour
 
-A `Palette` is one base hue. `Bright`, `Muted`, `Line`, `Subtle` and `OnAccent`
-are all derived from it, so a new scheme is one line in `Palette.All` and the
-whole app follows — and `tests/PaletteTests.cs` checks the derivation stays
-ordered and readable rather than checking any particular colour. `Theme.Use`
-raises `Theme.Changed`; `Themed` (the base of every custom control) subscribes
-in its constructor and unsubscribes in `Dispose`. **Nothing may bake a colour in
-at construction** — read it in `OnPaint` or the scheme switch will not reach it.
+The look is shared with `../AV/src/Theme.cs` and `../WinCleaner/src/Theme.cs`:
+navy-tinted near-black surfaces, rounded cards with a soft drop shadow and a
+hairline border, Segoe UI throughout, and one saturated accent carrying every
+lit state. Keep the three in step — a tone that drifts here is a tone that has
+to be explained.
 
-The near-black grounds (`Bg`, `Card`, `Sunken`) and the three state colours
-(`Good`, `Warn`, `Danger`) are deliberately *not* derived: a phosphor display is
-dark whatever the phosphor is, and a warning has to mean the same thing in every
-scheme.
+A `Palette` is one accent hue. `Hot`, `Soft` and `OnAccent` are derived from it,
+so a new scheme is one line in `Palette.All` and the whole app follows — and
+`tests/PaletteTests.cs` checks the derivation stays legible rather than checking
+any particular colour. `Theme.Use` raises `Theme.Changed`; `Themed` (the base of
+every custom control) subscribes in its constructor and unsubscribes in
+`Dispose`. **Nothing may bake a colour in at construction** — read it in
+`OnPaint` or the scheme switch will not reach it.
+
+The surfaces (`Bg`, `Card`, `CardLine`, `Sunken`, `Subtle`), the text tones
+(`Text`, `Muted`, `Disabled`) and the three state colours (`Good`, `Warn`,
+`Danger`) are deliberately *not* derived: a dark UI is dark whatever the accent
+is, and a warning has to mean the same thing in every scheme.
+
+There was an amber CRT skin here before this one — phosphor text, scanlines over
+every surface, dashed rules, square corners and letter-spaced monospace. It read
+as a prop rather than as something to keep open all day, and WinCleaner had
+already made the same move. Do not reintroduce the pieces of it: `Theme` has no
+scanline layer, no corner brackets and no letter-spacing, and `Theme.DrawLabel`
+and friends are plain `TextRenderer` wrappers on purpose.
 
 ### The traps this code already hit
 
@@ -143,27 +156,30 @@ Each cost a debugging round; do not reintroduce them.
   over and waits on an event for the verdict rather than opening anything itself.
 - **A `UserPaint` control's `OnPaint` must call `base.OnPaint(e)` if anything
   attaches to its `Paint` event.** The base implementation is what raises it.
-  `CrtPanel` and `Card` both do, because the header wordmark, the status line and
+  `Ground` and `Card` both do, because the header wordmark, the status line and
   every card readout are drawn that way — without the call they silently vanish.
 - **Dock order is reverse z-order.** Docked children are laid out from the
   *highest* index down, each taking a bite out of what is left. `pageHost` must
   sit at index 0 (`Controls.SetChildIndex(pageHost, 0)`) or it swallows the whole
   client area and the header ends up underneath the pages.
 - **`OnTextChanged` does not repaint a `UserPaint` control.** Only
-  `ResizeRedraw` invalidates, and this is a monospace UI — a translated caption
-  of the same length measures to the same width, so the resize never happens and
-  the control keeps painting the old language. `NavTab.FitWidth` and
-  `Btn.FitWidth` both call `Invalidate()` for exactly that reason.
-- **Letter-spacing is measured per string, not per character.**
-  `TextRenderer.MeasureText` adds its own padding once per call, so measuring a
-  run a character at a time charges that padding to every character and triples
-  the tracking. `Theme.DrawTracked` steps by one monospace advance instead, and
-  `Theme.MeasureTracked` is the matching width — auto-sized controls must use it.
+  `ResizeRedraw` invalidates, and a translated caption can measure to the same
+  width, in which case the resize never happens and the control keeps painting
+  the old language. `NavTab.FitWidth` and `Btn.FitWidth` both call
+  `Invalidate()` for exactly that reason.
+- **A measured width is not a drawn width.** `TextRenderer.MeasureText` with
+  `NoPadding` returns less than `DrawText` will actually use, so an auto-sized
+  control fitted to the measurement exactly gets an ellipsis instead of its last
+  two characters. `NavTab.FitWidth` and `Btn.FitWidth` both carry slack for it.
+- **The clocks are set in a monospace face on purpose.** `Theme.Digits` is a
+  second font stack used for the position readout, the duration beside it and the
+  list's time column. In Segoe UI the digits are not all the same width, so a
+  readout redrawn 25 times a second visibly jitters sideways.
 - **The level meter's amber and red are not derived from the scheme.**
   `Analyser.SegmentColour` uses `Theme.Warn` and `Theme.Danger` for the top of
   the range on purpose: "approaching clipping" has to mean the same thing in
   every palette, so those two stay fixed while the rest of the row follows the
-  hue.
+  accent.
 - **A list must be a whole number of rows tall.** A fraction of a row over shows
   a sliced track along the bottom edge, which reads as a clipping bug rather than
   as more to scroll. `BuildListCard` snaps the height to `TrackList.RowH`.
@@ -200,6 +216,13 @@ Each cost a debugging round; do not reintroduce them.
   than throwing: an untagged or truncated file is an ordinary outcome. New format
   support needs its counterpart in `tests/TagsTests.cs`, including a truncation
   and a lying-length case.
+- **`duration`** — `Tags.Read` answers how long a track runs as well as what it
+  is called, because the decoder only ever opens the track being played and
+  every other row would sit at `--:--`. Each container has its own reader in the
+  "How long it runs" section of `src/Tags.cs`; zero means "not stated", which is
+  a legitimate answer the decoder fills in later, and it must never become a
+  guess. `StartTrack` still overwrites it from the decoder, which is the last
+  word.
 - **`localization`** — every user-visible string goes through `Lang.T("key")`,
   added in `src/Lang.cs` with **both** English and Ukrainian.
   `tests/LangTests.cs` checks key parity, empty strings, `{0}` agreement, and

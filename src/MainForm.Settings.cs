@@ -69,7 +69,7 @@ namespace Retrace
             pendingVis = (AnalyserMode)Util.IniInt(map, "vis", 0, 0, 3);
             // The scheme has to be in place before anything paints, so it is
             // applied here rather than waiting for ApplySettingsToUi.
-            Theme.Use(Util.IniString(map, "scheme", "amber"));
+            Theme.Use(Util.IniString(map, "scheme", "blue"));
 
             playlist.Shuffle = Util.IniBool(map, "shuffle", false);
             playlist.Repeat = (RepeatMode)Util.IniInt(map, "repeat", 0, 0, 2);

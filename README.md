@@ -1,6 +1,6 @@
 # Retrace
 
-A compact offline audio player for Windows — **one ~155 KB portable executable
+A compact offline audio player for Windows — **one ~160 KB portable executable
 with zero dependencies**.
 
 No .NET to download, no NuGet packages, no toolchain: the whole thing is built
@@ -14,10 +14,11 @@ The one thing that touches the network is the update check: once a day it asks
 the GitHub Releases API whether a newer build exists. It is a setting, and it
 can be switched off on the Settings page.
 
-It wears the phosphor-terminal look of [WindowsStalker](https://github.com/alexbeatnik/WinCleaner)
-and [AV](https://github.com/alexbeatnik/AV) — dark cards, one phosphor hue,
-dashed rules and corner brackets — so the three read as the same machine. The
-hue is a setting: six schemes, switchable at run time.
+It wears the same look as [WinCleaner](https://github.com/alexbeatnik/WinCleaner)
+and [AV](https://github.com/alexbeatnik/AV) — navy-tinted near-black surfaces,
+rounded cards with a soft shadow, Segoe UI throughout and one saturated accent
+carrying every lit state — so the three read as the same suite. The accent is a
+setting: six schemes, switchable at run time.
 
 ![The player page](screenshots/player.png)
 
@@ -37,8 +38,8 @@ no decoder for is skipped rather than stalling the playlist.
 | **Transport** | play, pause, stop, previous, next, seek, eject, shuffle, three repeat modes |
 | **Playlist** | on the main page, Ctrl and Shift selection, drag and drop of files and folders, recursive folder adding, M3U8 load and save |
 | **Equaliser** | ten ISO octave bands and a preamp, ten presets, with the response curve plotted under them |
-| **Analyser** | spectrum or oscilloscope, click to change |
-| **Schemes** | amber, green, ice, violet, ember and bone — Ctrl+T cycles them |
+| **Analyser** | level meter, spectrum or oscilloscope, click to change |
+| **Schemes** | blue, teal, green, violet, amber and rose — Ctrl+T cycles them |
 | **Languages** | English and Ukrainian |
 
 Volume, balance, the equaliser curve, the colour scheme, the language, the page
@@ -88,8 +89,8 @@ src/
   WaveOut.cs          the output device
   AudioEngine.cs      the thread that joins them up
   Playlist.cs         track order, shuffle, repeat modes, M3U
-  Tags.cs             ID3v2, ID3v1, Vorbis comments, MP4 atoms
-  Theme.cs            the palettes and the drawing primitives
+  Tags.cs             ID3v2, ID3v1, Vorbis comments, MP4 atoms, durations
+  Theme.cs            the accent palettes and the drawing primitives
   Controls.cs         cards, tabs, buttons, sliders, the analyser, the list
   Icons.cs            every glyph, as vector paths
   MainForm*.cs        the window, the pages, playback wiring, saved state
@@ -112,10 +113,13 @@ apartment, and every later call from the audio thread has to cross apartments �
 which throws, and looks exactly like a track that loads, reports its duration
 correctly, and stops instantly.
 
-**Colour.** A scheme is one base hue; the headings, captions, rules and the
-ink used on a filled block are all derived from it, so adding one is a single
-line in `Palette.All` and the whole app follows. Changing it raises an event
-that every control repaints on — nothing bakes a colour in at construction.
+**Colour.** A scheme is one accent hue; the hover tone, the wash behind a lit
+row and the ink used on a filled block are all derived from it, so adding one is
+a single line in `Palette.All` and the whole app follows. The surfaces and the
+three state colours deliberately do not follow it — a dark UI is dark whatever
+the accent is, and a warning has to mean the same thing in every scheme.
+Changing the scheme raises an event that every control repaints on; nothing
+bakes a colour in at construction.
 
 **Tags** are parsed directly — ID3v2.2/2.3/2.4, ID3v1, Vorbis comments in FLAC
 and Ogg, and iTunes atoms in MP4. Media Foundation could supply them, but that
@@ -123,19 +127,26 @@ means instantiating a decoder per file, which is far too slow for a folder of a
 thousand tracks. Every length in those formats comes out of the file itself and
 is checked against what is actually there before a byte is read.
 
+The same pass reads **how long each track runs** — a Xing, Info or VBRI header
+in an mp3 and its frame headers otherwise, FLAC's STREAMINFO, the last granule
+position of an Ogg stream, MP4's movie header, a wave's data chunk and a wma's
+file properties object. Without it only the track being played would know its
+own length, and every row nobody had played yet would sit at `--:--` with the
+playlist total wrong underneath it.
+
 ## Tests
 
 ```powershell
 .\test.ps1
 ```
 
-105 tests over the parts that have no window: time and settings formatting, the
+122 tests over the parts that have no window: time and settings formatting, the
 M3U round trip, playlist order under shuffle and the three repeat modes, the
 equaliser and the FFT, the downmix and the level controls, all four tag formats
-including truncated and lying headers, the palette derivation, the two string
-tables, and the updater's two decisions — when a check is due, and whether a tag
-is really newer. No audio device and no real media file is needed, and the suite
-runs in about a second.
+including truncated and lying headers, the seven containers a duration is read
+out of, the palette derivation, the two string tables, and the updater's two
+decisions — when a check is due, and whether a tag is really newer. No audio
+device and no real media file is needed, and the suite runs in about a second.
 
 `.github/workflows/tests.yml` runs the build and the tests on every pull request
 and every push to `main`.

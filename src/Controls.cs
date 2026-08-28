@@ -39,15 +39,23 @@ namespace Retrace
         }
     }
 
-    /// <summary>A page background: the flat ground with the scanlines on it. A
-    /// plain Panel paints a clean slab and breaks the lines mid-window.</summary>
-    class CrtPanel : Themed
+    /// <summary>A page or bar background: a flat slab of the window ground with
+    /// an optional hairline rule along one edge. A plain Panel would do, but this
+    /// one follows the scheme and repaints itself when it changes.</summary>
+    class Ground : Themed
     {
-        public Color Ground = Theme.Bg;
+        public Color Back = Theme.Bg;
+        public bool RuleBottom, RuleTop;
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            Theme.Surface(this, e.Graphics, Ground);
+            Graphics g = e.Graphics;
+            Theme.Surface(this, g, Back);
+            using (var pen = new Pen(Theme.CardLine))
+            {
+                if (RuleTop) g.DrawLine(pen, 0, 0, Width, 0);
+                if (RuleBottom) g.DrawLine(pen, 0, Height - 1, Width, Height - 1);
+            }
             // The base implementation raises the Paint event, and it has to run
             // after the ground is laid down: the header's wordmark and the status
             // line are attached that way, and without this call neither appears.
@@ -55,38 +63,41 @@ namespace Retrace
         }
     }
 
-    /// <summary>A card: the dashed rule, the corner brackets and an uppercase
+    /// <summary>A card: the rounded slab with its shadow, and an uppercase
     /// header along the top.</summary>
     class Card : Themed
     {
         public string Header = "";
-        /// <summary>Drawn right-aligned in the header row — a count, a total, a
-        /// state word.</summary>
+        /// <summary>Drawn beside the header — a count, a total, a state
+        /// word.</summary>
         public string Note = "";
 
-        public const int HeaderH = 30;
+        public const int HeaderH = 36;
 
         public Card(string header)
         {
             Header = header;
-            Padding = new Padding(14, HeaderH + 6, 14, 12);
+            Padding = new Padding(16, HeaderH + 6, 16, 14);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            Theme.PaintCard(g, Width, Height, Theme.Phase(this));
-            int noteX = 14;
+            Theme.Surface(this, g, Parent != null ? Parent.BackColor : Theme.Bg);
+            Theme.PaintCard(g, Width, Height);
+
+            int noteX = 18;
             if (Header.Length > 0)
-                using (var f = Theme.UiBold(9f))
+                using (var f = Theme.UiBold(8.5f))
                 {
                     string caption = Header.ToUpperInvariant();
-                    Theme.DrawTracked(g, caption, f, new Point(14, 11), Theme.Bright, Theme.Track);
-                    noteX += Theme.MeasureTracked(caption, f, Theme.Track) + 18;
+                    Theme.DrawLabel(g, caption, f, new Point(18, 15), Theme.Muted);
+                    noteX += Theme.Measure(caption, f) + 16;
                 }
             if (Note.Length > 0)
                 using (var f = Theme.Ui(8.5f))
-                    Theme.DrawTracked(g, Note, f, new Point(noteX, 12), Theme.Muted, Theme.Track);
+                    Theme.DrawLabel(g, Note, f, new Point(noteX, 15), Theme.Disabled);
+
             // The base implementation raises the Paint event, and it has to run
             // after the card is laid down: a page draws its readouts into the card
             // through that event, and without this call they never appear.
@@ -108,28 +119,30 @@ namespace Retrace
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            Theme.PaintCard(g, Width, Height, Theme.Phase(this));
+            Theme.Surface(this, g, Parent != null ? Parent.BackColor : Theme.Bg);
+            Theme.PaintCard(g, Width, Height);
+
             using (var capF = Theme.UiBold(8f))
             using (var valF = Theme.UiBold(13f))
             {
-                int x = 18;
+                int x = 22;
                 for (int i = 0; i < Captions.Length; i++)
                 {
                     string cap = Captions[i].ToUpperInvariant();
                     string val = i < Values.Length ? Values[i] : "";
-                    int cell = Math.Max(Theme.MeasureTracked(cap, capF, Theme.Track),
-                                        Theme.Measure(val, valF));
-                    Theme.DrawTracked(g, cap, capF, new Point(x, 13), Theme.Muted, Theme.Track);
-                    Theme.Draw(g, val, valF, new Rectangle(x, 28, cell + 6, 24), Theme.Text);
-                    x += cell + 26;
-                    if (x > Width - 20) break;
+                    int cell = Math.Max(Theme.Measure(cap, capF), Theme.Measure(val, valF));
+                    Theme.DrawLabel(g, cap, capF, new Point(x, 13), Theme.Muted);
+                    Theme.Draw(g, val, valF, new Rectangle(x, 28, cell + 8, 24), Theme.Text);
+                    x += cell + 30;
+                    if (x > Width - 24) break;
                 }
             }
         }
     }
 
-    /// <summary>A tab in the header. The active one is a filled block, which is
-    /// the only place the phosphor is used as a ground.</summary>
+    /// <summary>A tab in the header. The active one is a filled pill, which is
+    /// the idiom every current dashboard uses and the one the tools next door
+    /// wear.</summary>
     class NavTab : Themed
     {
         public IconDraw Icon;
@@ -140,9 +153,9 @@ namespace Retrace
         {
             Text = text;
             Icon = icon;
-            Height = 30;
+            Height = 38;
             Cursor = Cursors.Hand;
-            Font = Theme.UiBold(9f);
+            Font = Theme.UiBold(9.5f);
             MouseEnter += delegate { over = true; Invalidate(); };
             MouseLeave += delegate { over = false; Invalidate(); };
         }
@@ -157,11 +170,16 @@ namespace Retrace
         /// </summary>
         public void FitWidth()
         {
-            using (var f = Theme.UiBold(9f))
-                Width = 34 + Theme.MeasureTracked(Text.ToUpperInvariant(), f, Theme.Track) + 14;
+            using (var f = Theme.UiBold(9.5f))
+                // 46 is the chrome the paint below uses — 34 before the label and
+                // 12 after — plus slack for the padding TextRenderer adds on a
+                // draw but not on a NoPadding measure. One pixel short and
+                // EndEllipsis does not trim a character, it trims three.
+                Width = 46 + Theme.Measure(Text, f);
             // OnTextChanged does not repaint a UserPaint control: only ResizeRedraw
-            // invalidates, and a translated caption of the same length measures to
-            // the same width, so the resize never happens.
+            // invalidates, and a translated caption can measure to the same width,
+            // in which case the resize never happens and the tab keeps painting
+            // the old language.
             Invalidate();
         }
 
@@ -169,30 +187,29 @@ namespace Retrace
         {
             Graphics g = e.Graphics;
             Theme.Surface(this, g, Theme.Bg);
-            var r = new Rectangle(0, 0, Width - 1, Height - 1);
+            var pill = new RectangleF(0.5f, 0.5f, Width - 1, Height - 1);
+            if (Active) Theme.Fill(g, pill, Height / 2f, Theme.AccentSoft);
+            else if (over) Theme.Fill(g, pill, Height / 2f, Color.FromArgb(13, 255, 255, 255));
 
-            if (Active)
-                using (var b = new SolidBrush(Theme.Text)) g.FillRectangle(b, r);
-            else if (over)
-                using (var b = new SolidBrush(Theme.Subtle)) g.FillRectangle(b, r);
-
-            Color ink = Active ? Theme.OnAccent : (over ? Theme.Bright : Theme.Muted);
-            if (Icon != null) Icon(g, new RectangleF(9, 6, 18, 18), ink);
-            using (var f = Theme.UiBold(9f))
-                Theme.DrawTracked(g, Text.ToUpperInvariant(), f, new Point(32, 9), ink, Theme.Track);
+            Color ink = Active ? Theme.AccentHot : (over ? Theme.Text : Theme.Muted);
+            if (Icon != null) Icon(g, new RectangleF(13, (Height - 17) / 2f, 17, 17), ink);
+            using (var f = Theme.UiBold(9.5f))
+                Theme.Draw(g, Text, f, new Rectangle(34, 0, Width - 44, Height), ink);
         }
     }
 
     /// <summary>
-    /// A push button. Square, dashed-free, with the phosphor as its text — the
-    /// primary variant fills instead, for the one action a page is really about.
+    /// A push button: a rounded slab that sits on a card. The latched variant
+    /// fills with the accent, which is how the scheme, the language and the
+    /// equaliser switch say which one is chosen.
     /// </summary>
     class Btn : Themed, IButtonControl
     {
         public IconDraw Icon;
-        /// <summary>Latching: draws lit when on, which is how the scheme, the
-        /// language and the equaliser switch say which one is chosen.</summary>
         public bool Latch, On;
+        /// <summary>The one action a card is really about: filled accent whether
+        /// or not it latches.</summary>
+        public bool Primary;
 
         bool over, down;
         DialogResult dialogResult = DialogResult.None;
@@ -200,7 +217,7 @@ namespace Retrace
         public Btn(string text)
         {
             Text = text;
-            Height = 30;
+            Height = 32;
             Width = 96;
             Cursor = Cursors.Hand;
             Font = Theme.UiBold(9f);
@@ -225,56 +242,52 @@ namespace Retrace
         public void FitWidth(int minimum)
         {
             using (var f = Theme.UiBold(9f))
-            {
-                int text = Theme.MeasureTracked(Text.ToUpperInvariant(), f, Theme.Track);
-                Width = Math.Max(minimum, (Icon != null ? 30 : 0) + text + 26);
-            }
+                Width = Math.Max(minimum, (Icon != null ? 26 : 0) + Theme.Measure(Text, f) + 28);
             Invalidate();
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            Theme.Surface(this, g, Parent != null ? Parent.BackColor : Theme.Bg);
-            var r = new Rectangle(0, 0, Width - 1, Height - 1);
+            Theme.Surface(this, g, Parent != null ? Parent.BackColor : Theme.Card);
+            var box = new RectangleF(0.5f, 0.5f, Width - 1, Height - 1);
 
-            bool lit = Latch && On;
-            Color fill = !Enabled ? Color.FromArgb(20, 20, 20)
-                       : lit ? (over ? Theme.Bright : Theme.Text)
-                       : (down ? Theme.Card : (over ? Theme.BtnHot : Theme.Subtle));
-            using (var b = new SolidBrush(fill)) g.FillRectangle(b, r);
+            bool lit = Primary || (Latch && On);
+            Color fill = !Enabled ? Theme.Subtle
+                       : lit ? (over ? Theme.AccentHot : Theme.Accent)
+                       : (down ? Theme.Card : (over ? Theme.SubtleHot : Theme.Subtle));
+            Theme.Fill(g, box, Theme.RadiusSmall + 2, fill);
+            // Only the unlit buttons need an outline: a filled accent already
+            // separates itself from the card, and ringing it as well is what makes
+            // every control read as a cell.
+            if (!lit) Theme.Outline(g, box, Theme.RadiusSmall + 2,
+                !Enabled ? Theme.CardLine : (over ? Theme.AccentHot : Theme.CardLine));
 
-            Color edge = !Enabled ? Color.FromArgb(48, 48, 48) : lit ? Theme.Bright : Theme.Line;
-            using (var pen = new Pen(edge)) g.DrawRectangle(pen, r);
-
-            Color ink = !Enabled ? Theme.Disabled
-                      : lit ? Theme.OnAccent
-                      : (over ? Theme.Bright : Theme.Text);
-
+            Color ink = !Enabled ? Theme.Muted : lit ? Theme.OnAccent : Theme.Text;
             using (var f = Theme.UiBold(9f))
             {
-                string caption = Text.ToUpperInvariant();
-                int textW = Theme.MeasureTracked(caption, f, Theme.Track);
-                int glyph = Icon != null ? 20 : 0;
-                int x = (Width - (glyph + (glyph > 0 && textW > 0 ? 8 : 0) + textW)) / 2;
-                if (down && Enabled) x += 1;
-                int y = (Height - 14) / 2 + (down && Enabled ? 1 : 0);
-                if (Icon != null) Icon(g, new RectangleF(x, y - 2, 18, 18), ink);
+                int textW = Theme.Measure(Text, f);
+                int glyph = Icon != null ? 17 : 0;
+                int gap = glyph > 0 && textW > 0 ? 8 : 0;
+                int x = Math.Max(8, (Width - (glyph + gap + textW)) / 2);
+                if (Icon != null) Icon(g, new RectangleF(x, (Height - 17) / 2f, 17, 17), ink);
                 if (textW > 0)
-                    Theme.DrawTracked(g, caption, f, new Point(x + glyph + (glyph > 0 ? 8 : 0), y),
-                        ink, Theme.Track);
+                    Theme.Draw(g, Text, f,
+                        new Rectangle(x + glyph + gap, 0, Width - x - glyph - gap, Height), ink);
             }
         }
     }
 
     /// <summary>
-    /// A square transport key. Separate from Btn because the transport is a row
-    /// of glyphs with no captions, and it wants to stay square whatever the
+    /// A round transport key. Separate from Btn because the transport is a row of
+    /// glyphs with no captions, and it wants to stay circular whatever the
     /// language does to everything else.
     /// </summary>
     class KeyBtn : Themed, IButtonControl
     {
         public IconDraw Icon;
+        /// <summary>The play key: a filled accent disc, the one control on the
+        /// page the eye should land on first.</summary>
         public bool Primary;
         /// <summary>Latching: draws lit when on, which is how shuffle and repeat
         /// say what they are doing without needing a caption.</summary>
@@ -310,28 +323,34 @@ namespace Retrace
         {
             Graphics g = e.Graphics;
             Theme.Surface(this, g, Theme.Card);
-            var r = new Rectangle(0, 0, Width - 1, Height - 1);
+            var disc = new RectangleF(0.5f, 0.5f, Width - 1, Height - 1);
+            float rad = Math.Min(disc.Width, disc.Height) / 2f;
 
-            bool lit = Primary || (Latch && On);
-            Color fill = !Enabled ? Color.FromArgb(16, 16, 16)
-                       : lit ? (over ? Theme.Bright : Theme.Text)
-                       : (down ? Color.FromArgb(6, 6, 6) : (over ? Theme.Subtle : Color.FromArgb(20, 20, 20)));
-            using (var b = new SolidBrush(fill)) g.FillRectangle(b, r);
-            using (var pen = new Pen(!Enabled ? Color.FromArgb(40, 40, 40)
-                       : lit ? Theme.Bright : Theme.Line))
-                g.DrawRectangle(pen, r);
+            bool latched = Latch && On;
+            Color fill = !Enabled ? Theme.Subtle
+                       : Primary ? (over ? Theme.AccentHot : Theme.Accent)
+                       : latched ? Theme.AccentSoft
+                       : (down ? Theme.Card : (over ? Theme.SubtleHot : Theme.Subtle));
+            Theme.Fill(g, disc, rad, fill);
+            if (!Primary)
+                Theme.Outline(g, disc, rad,
+                    !Enabled ? Theme.CardLine : latched ? Theme.Accent
+                    : over ? Theme.AccentHot : Theme.CardLine);
 
-            Color ink = !Enabled ? Theme.Disabled
-                      : lit ? Theme.OnAccent : (over ? Theme.Bright : Theme.Text);
+            Color ink = !Enabled ? Theme.Muted
+                      : Primary ? Theme.OnAccent
+                      : latched ? Theme.AccentHot : Theme.Text;
+            // A glyph that shifts by a pixel on the press is most of what makes a
+            // flat button feel like it was pushed.
             var box = new RectangleF(0, down && Enabled ? 1 : 0, Width, Height);
             if (Icon != null) Icon(g, box, ink);
         }
     }
 
     /// <summary>
-    /// A horizontal slider drawn as a phosphor bar: a dashed empty track, a solid
-    /// filled run, and a bright cursor at the setting. Used for position, volume
-    /// and balance, which differ only in what they are measuring.
+    /// A horizontal slider: a rounded track, a filled run in the accent and a
+    /// round knob at the setting. Used for position, volume and balance, which
+    /// differ only in what they are measuring.
     /// </summary>
     class Bar : Themed
     {
@@ -354,7 +373,7 @@ namespace Retrace
 
         public Bar()
         {
-            Height = 22;
+            Height = 24;
             Cursor = Cursors.Hand;
         }
 
@@ -389,9 +408,15 @@ namespace Retrace
             if (h != null) h(this, EventArgs.Empty);
         }
 
+        // The knob has to stay inside the control, so the travel is inset by its
+        // radius at both ends and every position maps into that span.
+        const float Knob = 13f;
+        float Inset { get { return Knob / 2f + 1; } }
+        float Span { get { return Math.Max(1f, Width - Inset * 2); } }
+
         void SetFromMouse(int x)
         {
-            double f = (x - 2) / (double)Math.Max(1, Width - 4);
+            double f = (x - Inset) / Span;
             if (f < 0) f = 0;
             if (f > 1) f = 1;
             if (Detent > 0 && Math.Abs(f - 0.5) < Detent) f = 0.5;
@@ -443,35 +468,36 @@ namespace Retrace
         {
             Graphics g = e.Graphics;
             Theme.Surface(this, g, Parent != null ? Parent.BackColor : Theme.Card);
-            g.SmoothingMode = SmoothingMode.None;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            int mid = Height / 2;
-            var track = new Rectangle(2, mid - 3, Width - 4, 6);
-            using (var b = new SolidBrush(Theme.Sunken)) g.FillRectangle(b, track);
-            using (var pen = new Pen(Theme.Line))
-            {
-                pen.DashStyle = DashStyle.Dot;
-                g.DrawLine(pen, track.X, mid, track.Right - 1, mid);
-            }
+            bool live = over || dragging;
+            float h = live ? 7f : 5f;
+            float mid = Height / 2f;
+            var track = new RectangleF(Inset - h / 2, mid - h / 2, Span + h, h);
+            Theme.Fill(g, track, h / 2, Theme.Sunken);
+            Theme.Outline(g, track, h / 2, Theme.CardLine);
 
-            float f = (float)Fraction;
-            int at = track.X + (int)(track.Width * f);
-            int from = FromCentre ? Math.Min(track.X + track.Width / 2, at) : track.X;
-            int to = FromCentre ? Math.Max(track.X + track.Width / 2, at) : at;
-            if (to > from)
-                using (var b = new SolidBrush(over || dragging ? Theme.Bright : Theme.Text))
-                    g.FillRectangle(b, from, mid - 3, to - from, 6);
+            float at = Inset + Span * (float)Fraction;
+            float centre = Inset + Span / 2f;
+            float from = FromCentre ? Math.Min(centre, at) : Inset;
+            float to = FromCentre ? Math.Max(centre, at) : at;
+            if (to - from > 0.5f)
+                Theme.Fill(g, new RectangleF(from - h / 2, mid - h / 2, to - from + h, h),
+                    h / 2, live ? Theme.AccentHot : Theme.Accent);
 
-            // The cursor: a full-height bar, so the setting is findable even when
-            // the fill behind it is only a pixel or two wide.
-            var cursor = new Rectangle(Math.Min(at, track.Right - 3), 0, 3, Height);
-            using (var b = new SolidBrush(over || dragging ? Theme.Bright : Theme.Text))
-                g.FillRectangle(b, cursor);
+            // A white disc with an accent ring: it has to be findable when the
+            // fill behind it is only a pixel or two wide.
+            var knob = new RectangleF(at - Knob / 2, mid - Knob / 2, Knob, Knob);
+            using (var b = new SolidBrush(Color.FromArgb(60, 0, 0, 0)))
+                g.FillEllipse(b, knob.X, knob.Y + 1.5f, knob.Width, knob.Height);
+            using (var b = new SolidBrush(live ? Color.White : Theme.Text)) g.FillEllipse(b, knob);
+            using (var pen = new Pen(live ? Theme.AccentHot : Theme.Accent, 2f))
+                g.DrawEllipse(pen, knob.X + 1, knob.Y + 1, knob.Width - 2, knob.Height - 2);
         }
     }
 
     /// <summary>
-    /// A vertical fader, the kind a graphic equaliser has eleven of. Same phosphor
+    /// A vertical fader, the kind a graphic equaliser has eleven of. The same
     /// language as Bar, turned on its side and filling from the centre detent.
     /// </summary>
     class Fader : Themed
@@ -510,9 +536,9 @@ namespace Retrace
             Invalidate();
         }
 
-        const int LabelH = 18, ValueH = 16;
-        int TravelTop { get { return ValueH + 4; } }
-        int TravelH { get { return Math.Max(1, Height - LabelH - TravelTop - 4); } }
+        const int LabelH = 20, ValueH = 18, KnobH = 12;
+        int TravelTop { get { return ValueH + 6 + KnobH / 2; } }
+        int TravelH { get { return Math.Max(1, Height - LabelH - TravelTop - 6 - KnobH / 2); } }
 
         void SetFromMouse(int y)
         {
@@ -563,52 +589,53 @@ namespace Retrace
         {
             Graphics g = e.Graphics;
             Theme.Surface(this, g, Theme.Card);
-            g.SmoothingMode = SmoothingMode.None;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            int cx = Width / 2;
-            var track = new Rectangle(cx - 3, TravelTop, 6, TravelH);
-            using (var b = new SolidBrush(Theme.Sunken)) g.FillRectangle(b, track);
-            using (var pen = new Pen(Theme.Line))
-            {
-                pen.DashStyle = DashStyle.Dot;
-                g.DrawLine(pen, cx, track.Y, cx, track.Bottom - 1);
-            }
+            bool live = over || dragging;
+            float cx = Width / 2f;
+            const float w = 6f;
+            var track = new RectangleF(cx - w / 2, TravelTop - w / 2, w, TravelH + w);
+            Theme.Fill(g, track, w / 2, Theme.Sunken);
+            Theme.Outline(g, track, w / 2, Theme.CardLine);
 
-            int zero = TravelTop + (int)(TravelH * (Max / (Max - Min)));
-            using (var pen = new Pen(Theme.Line))
-                g.DrawLine(pen, cx - 8, zero, cx + 7, zero);
+            float zero = TravelTop + TravelH * (float)(Max / (Max - Min));
+            float at = TravelTop + TravelH * (float)((Max - value) / (Max - Min));
+            if (Math.Abs(at - zero) > 0.5f)
+                Theme.Fill(g, new RectangleF(cx - w / 2, Math.Min(at, zero) - w / 2, w,
+                    Math.Abs(zero - at) + w), w / 2, live ? Theme.AccentHot : Theme.Accent);
 
-            double f = (Max - value) / (Max - Min);
-            int at = TravelTop + (int)(TravelH * f);
-            Color lit = over || dragging ? Theme.Bright : Theme.Text;
-            if (at != zero)
-                using (var b = new SolidBrush(lit))
-                    g.FillRectangle(b, cx - 3, Math.Min(at, zero), 6, Math.Abs(zero - at));
-
-            using (var b = new SolidBrush(lit)) g.FillRectangle(b, cx - 9, at - 2, 18, 4);
+            // The knob is a pill rather than a disc: a fader is grabbed by its
+            // width, and a round one on a 6px track reads as a bead on a string.
+            var knob = new RectangleF(cx - 11, at - KnobH / 2f, 22, KnobH);
+            using (var b = new SolidBrush(Color.FromArgb(60, 0, 0, 0)))
+            using (var p = Theme.Round(new RectangleF(knob.X, knob.Y + 1.5f, knob.Width, knob.Height),
+                       KnobH / 2f))
+                g.FillPath(b, p);
+            Theme.Fill(g, knob, KnobH / 2f, live ? Color.White : Theme.Text);
+            Theme.Outline(g, knob, KnobH / 2f, live ? Theme.AccentHot : Theme.Accent);
 
             using (var vf = Theme.UiBold(8.5f))
             {
                 string shown = (value > 0 ? "+" : "") + value.ToString("0.#",
                     System.Globalization.CultureInfo.InvariantCulture);
-                Theme.DrawTrackedCentered(g, shown, vf, new Rectangle(0, 0, Width, ValueH),
-                    Math.Abs(value) < 0.05 ? Theme.Muted : lit, Theme.Track);
+                Theme.DrawCentered(g, shown, vf, new Rectangle(0, 0, Width, ValueH),
+                    Math.Abs(value) < 0.05 ? Theme.Muted : (live ? Theme.AccentHot : Theme.Text));
             }
             using (var lf = Theme.Ui(8f))
-                Theme.DrawTrackedCentered(g, Label, lf,
-                    new Rectangle(0, Height - LabelH, Width, LabelH), Theme.Muted, Theme.Track);
+                Theme.DrawCentered(g, Label, lf,
+                    new Rectangle(0, Height - LabelH, Width, LabelH), Theme.Muted);
         }
     }
 
     /// <summary>
-    /// The analyser. Spectrum or oscilloscope, click to change — the same two the
-    /// engine can feed and the only decoration in the app.
+    /// The analyser. Level meter, spectrum or oscilloscope, click to change — the
+    /// same three the engine can feed and the only decoration in the app.
     /// </summary>
     class Analyser : Themed
     {
         // Wide enough to read as a spectrum, few enough that each column is
         // still a column rather than a hairline.
-        public const int Bars = 36;
+        public const int Bars = 32;
 
         readonly float[] levels = new float[Bars];
         readonly float[] peaks = new float[Bars];
@@ -721,50 +748,63 @@ namespace Retrace
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            Theme.Surface(this, g, Theme.Sunken);
-            g.SmoothingMode = SmoothingMode.None;
-            var inner = new Rectangle(6, 6, Width - 12, Height - 12);
+            Theme.Surface(this, g, Theme.Card);
+            var well = new RectangleF(0.5f, 0.5f, Width - 1, Height - 1);
+            Theme.Fill(g, well, Theme.RadiusSmall, Theme.Sunken);
+
+            var inner = new Rectangle(10, 8, Width - 20, Height - 16);
             if (inner.Width <= 0 || inner.Height <= 0) return;
 
             if (Mode == AnalyserMode.Off)
             {
                 using (var f = Theme.Ui(9f))
-                    Theme.DrawTrackedCentered(g, Lang.T("vis.off"), f,
-                        new Rectangle(0, 0, Width, Height), Theme.Line, Theme.Track);
+                    Theme.DrawCentered(g, Lang.T("vis.off"), f,
+                        new Rectangle(0, 0, Width, Height), Theme.Disabled);
                 return;
             }
 
             if (Mode == AnalyserMode.Vu) { PaintVu(g, inner); return; }
             if (Mode == AnalyserMode.Scope) { PaintScope(g, inner); return; }
+            PaintBars(g, inner);
+        }
 
-            // Discrete cells rather than a continuous bar: a phosphor display is a
-            // grid of lamps, and the stepping is most of what makes it read as one.
-            const int cell = 4;
-            int rows = Math.Max(1, inner.Height / cell);
-            float bw = inner.Width / (float)Bars;
-            float w = Math.Max(1f, bw - 2f);
+        /// <summary>The spectrum: a column per band, rounded at the top, with the
+        /// peak hold floating above it as a thin cap.</summary>
+        void PaintBars(Graphics g, Rectangle r)
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            float step = r.Width / (float)Bars;
+            float w = Math.Max(2f, step - 3f);
+            float rad = Math.Min(2.5f, w / 2f);
 
-            using (var dim = new SolidBrush(Color.FromArgb(18, Theme.Text)))
-            using (var lit = new SolidBrush(Theme.Text))
-            using (var hot = new SolidBrush(Theme.Bright))
+            using (var track = new SolidBrush(Color.FromArgb(28, 255, 255, 255)))
+            using (var fill = new LinearGradientBrush(
+                       new RectangleF(r.X, r.Y, 1, r.Height),
+                       Theme.AccentHot, Theme.Accent, LinearGradientMode.Vertical))
+            using (var cap = new SolidBrush(Theme.Text))
                 for (int i = 0; i < Bars; i++)
                 {
-                    float x = inner.X + i * bw;
-                    int on = (int)(levels[i] * rows);
-                    int peak = (int)(peaks[i] * rows);
-                    for (int r = 0; r < rows; r++)
-                    {
-                        float y = inner.Bottom - (r + 1) * cell;
-                        Brush b = r == peak - 1 ? hot : (r < on ? lit : dim);
-                        g.FillRectangle(b, x, y, w, cell - 1);
-                    }
+                    float x = r.X + i * step + (step - w) / 2f;
+                    using (var p = Theme.Round(new RectangleF(x, r.Y, w, r.Height), rad))
+                        g.FillPath(track, p);
+
+                    float h = Math.Max(0, levels[i]) * r.Height;
+                    if (h > 1)
+                        using (var p = Theme.Round(new RectangleF(x, r.Bottom - h, w, h), rad))
+                            g.FillPath(fill, p);
+
+                    float peak = Math.Max(0, peaks[i]) * r.Height;
+                    if (peak > 2)
+                        using (var p = Theme.Round(
+                                   new RectangleF(x, r.Bottom - peak - 2, w, 2.5f), 1.2f))
+                            g.FillPath(cap, p);
                 }
         }
 
         // ---- The output level meter ---------------------------------------------
 
         /// <summary>How many segments each channel gets.</summary>
-        const int VuSegments = 20;
+        const int VuSegments = 22;
         /// <summary>Where the segments stop being the scheme's own colour: amber
         /// from here, red from RedFrom. Those two are fixed rather than derived,
         /// because "approaching clipping" has to mean the same thing in every
@@ -783,7 +823,7 @@ namespace Retrace
             float f = index / (float)(VuSegments - 1);
             if (f >= RedFrom) return Theme.Danger;
             if (f >= AmberFrom) return Theme.Warn;
-            return Theme.Text;
+            return Theme.Accent;
         }
 
         /// <summary>
@@ -793,27 +833,26 @@ namespace Retrace
         /// </summary>
         void PaintVu(Graphics g, Rectangle r)
         {
-            g.SmoothingMode = SmoothingMode.None;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            const int LabelW = 16, RowH = 18, Gap = 8, ScaleH = 12;
+            const int LabelW = 16, RowH = 18, Gap = 10, ScaleH = 14;
             int rowsTop = r.Y + Math.Max(0, (r.Height - (RowH * 2 + Gap + ScaleH)) / 2);
 
             PaintChannel(g, r, rowsTop, LabelW, RowH, "L", vuLeft, holdLeft);
             PaintChannel(g, r, rowsTop + RowH + Gap, LabelW, RowH, "R", vuRight, holdRight);
-            PaintScale(g, r, rowsTop + RowH * 2 + Gap + 2, LabelW);
+            PaintScale(g, r, rowsTop + RowH * 2 + Gap + 4, LabelW);
         }
 
         void PaintChannel(Graphics g, Rectangle r, int y, int labelW, int rowH,
             string channel, float level, float hold)
         {
             using (var f = Theme.UiBold(8f))
-                Theme.DrawTrackedLeft(g, channel, f, new Rectangle(r.X, y, labelW, rowH),
-                    Theme.Muted, Theme.Track);
+                Theme.Draw(g, channel, f, new Rectangle(r.X, y, labelW, rowH), Theme.Muted);
 
             int x0 = r.X + labelW;
             int span = r.Right - x0;
             float step = span / (float)VuSegments;
-            float w = Math.Max(2f, step - 2f);
+            float w = Math.Max(2f, step - 2.5f);
 
             int lit = (int)Math.Round(level * VuSegments);
             int peak = hold > 0.002f
@@ -826,10 +865,9 @@ namespace Retrace
                 // An unlit segment still shows faintly: a meter you can see the
                 // whole of reads as an instrument, and one that vanishes reads as
                 // a bar that has not been drawn yet.
-                Color shown = i == peak ? Theme.Bright
-                            : on ? c : Color.FromArgb(34, c);
-                using (var b = new SolidBrush(shown))
-                    g.FillRectangle(b, x0 + i * step, y + 2, w, rowH - 4);
+                Color shown = i == peak ? Theme.Text
+                            : on ? c : Color.FromArgb(38, c);
+                Theme.Fill(g, new RectangleF(x0 + i * step, y + 2, w, rowH - 4), 2f, shown);
             }
         }
 
@@ -842,24 +880,23 @@ namespace Retrace
             int x0 = r.X + labelW;
             int span = r.Right - x0;
 
-            using (var f = Theme.Ui(7.5f))
+            using (var f = Theme.Ui(7f))
                 for (int i = 0; i < marks.Length; i++)
                 {
-                    int w = Theme.MeasureTracked(captions[i], f, Theme.Track);
+                    int w = Theme.Measure(captions[i], f);
                     int at = x0 + (int)(span * marks[i]);
                     // The first and last are pulled inside the ends rather than
                     // centred on them, or they hang off the card.
                     int left = i == 0 ? at : (i == marks.Length - 1 ? at - w : at - w / 2);
-                    Theme.DrawTracked(g, captions[i], f, new Point(left, y),
+                    Theme.DrawLabel(g, captions[i], f, new Point(left, y),
                         marks[i] >= RedFrom ? Theme.Danger
-                            : marks[i] >= AmberFrom ? Theme.Warn : Theme.Line,
-                        Theme.Track);
+                            : marks[i] >= AmberFrom ? Theme.Warn : Theme.Disabled);
                 }
         }
 
         void PaintScope(Graphics g, Rectangle r)
         {
-            using (var pen = new Pen(Theme.Line))
+            using (var pen = new Pen(Theme.CardLine))
             {
                 pen.DashStyle = DashStyle.Dot;
                 g.DrawLine(pen, r.X, r.Y + r.Height / 2, r.Right, r.Y + r.Height / 2);
@@ -886,7 +923,11 @@ namespace Retrace
                 if (v < -1) v = -1;
                 pts[x] = new PointF(r.X + x, r.Y + r.Height / 2f - v * (r.Height / 2f - 2));
             }
-            using (var pen = new Pen(Theme.Text, 1.4f)) g.DrawLines(pen, pts);
+            // A wide translucent pass under the line is what gives the trace the
+            // glow a lit display has, at a fraction of the cost of drawing one.
+            using (var glow = new Pen(Color.FromArgb(60, Theme.Accent), 4f))
+                g.DrawLines(glow, pts);
+            using (var pen = new Pen(Theme.AccentHot, 1.6f)) g.DrawLines(pen, pts);
         }
     }
 
@@ -992,7 +1033,7 @@ namespace Retrace
         Rectangle ScrollThumb()
         {
             if (!NeedsScroll) return Rectangle.Empty;
-            int h = Math.Max(24, (int)((long)Height * VisibleRows / Count));
+            int h = Math.Max(28, (int)((long)Height * VisibleRows / Count));
             int y = MaxTop == 0 ? 0 : (int)((long)(Height - h) * top / MaxTop);
             return new Rectangle(Width - ScrollW, y, ScrollW, h);
         }
@@ -1200,53 +1241,52 @@ namespace Retrace
             int current = list.CurrentIndex;
             int last = Math.Min(Count, top + VisibleRows + 1);
 
-            using (var mono = Theme.Ui(9.5f))
-            using (var monoBold = Theme.UiBold(9.5f))
-            using (var num = Theme.Ui(8.5f))
-                for (int i = top; i < last; i++)
-                {
-                    Track t = list.At(i);
-                    if (t == null) continue;
-                    var row = new Rectangle(0, (i - top) * RowH, listW, RowH);
-
-                    bool isSelected = selected.Contains(i);
-                    bool isCurrent = i == current;
-
-                    if (isSelected)
-                        using (var b = new SolidBrush(Theme.Subtle)) g.FillRectangle(b, row);
-                    else if (i == hover)
-                        using (var b = new SolidBrush(Color.FromArgb(20, Theme.Text)))
-                            g.FillRectangle(b, row);
-
-                    // The playing row is marked down its left edge as well as by
-                    // colour: with a selection over it, colour alone is not enough
-                    // to tell which row is which.
-                    if (isCurrent)
+            using (var face = Theme.Ui(9.5f))
+                using (var faceBold = Theme.UiBold(9.5f))
+                using (var num = Theme.Digits(8f))
+                using (var clock = Theme.Digits(9f))
+                    for (int i = top; i < last; i++)
                     {
-                        using (var b = new SolidBrush(Color.FromArgb(26, Theme.Text)))
-                            g.FillRectangle(b, row);
-                        using (var b = new SolidBrush(Theme.Text))
-                            g.FillRectangle(b, 0, row.Y + 3, 3, row.Height - 6);
+                        Track t = list.At(i);
+                        if (t == null) continue;
+                        var row = new RectangleF(3, (i - top) * RowH + 1, listW - 6, RowH - 2);
+
+                        bool isSelected = selected.Contains(i);
+                        bool isCurrent = i == current;
+
+                        if (isSelected) Theme.Fill(g, row, Theme.RadiusSmall, Theme.Subtle);
+                        else if (i == hover)
+                            Theme.Fill(g, row, Theme.RadiusSmall, Color.FromArgb(14, 255, 255, 255));
+
+                        // The playing row is marked down its left edge as well as
+                        // by colour: with a selection over it, colour alone is not
+                        // enough to tell which row is which.
+                        if (isCurrent)
+                        {
+                            Theme.Fill(g, row, Theme.RadiusSmall, Theme.AccentSoft);
+                            Theme.Fill(g, new RectangleF(row.X, row.Y + 4, 3, row.Height - 8),
+                                1.5f, Theme.Accent);
+                        }
+
+                        Color ink = isCurrent ? Theme.Text : (isSelected ? Theme.Text : Theme.Muted);
+                        Font font = isCurrent ? faceBold : face;
+                        int y = (int)row.Y;
+
+                        const int numW = 34, pad = 14;
+                        string index = (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        Theme.Draw(g, index, num, new Rectangle(pad, y, numW, RowH - 2),
+                            isCurrent ? Theme.AccentHot : Theme.Disabled);
+
+                        string time = t.Duration > 0 ? Util.Time(t.Duration) : "--:--";
+                        int timeW = Theme.Measure(time, clock) + 6;
+                        Theme.DrawRight(g, time, clock,
+                            new Rectangle(listW - timeW - pad, y, timeW, RowH - 2),
+                            isCurrent ? Theme.Text : Theme.Disabled);
+
+                        int labelX = pad + numW;
+                        Theme.Draw(g, t.Label, font,
+                            new Rectangle(labelX, y, listW - labelX - timeW - pad * 2, RowH - 2), ink);
                     }
-
-                    Color ink = isCurrent ? Theme.Bright : (isSelected ? Theme.Text : Theme.Muted);
-                    Font font = isCurrent ? monoBold : mono;
-
-                    const int numW = 40, pad = 12;
-                    string index = (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    Theme.Draw(g, index, num, new Rectangle(pad, row.Y, numW, RowH),
-                        isCurrent ? Theme.Text : Theme.Line);
-
-                    string time = t.Duration > 0 ? Util.Time(t.Duration) : "--:--";
-                    int timeW = Theme.Measure(time, mono) + 8;
-                    Theme.Draw(g, time, mono,
-                        new Rectangle(listW - timeW - pad, row.Y, timeW, RowH),
-                        isCurrent ? Theme.Text : Theme.Line);
-
-                    int labelX = pad + numW;
-                    Theme.Draw(g, t.Label, font,
-                        new Rectangle(labelX, row.Y, listW - labelX - timeW - pad * 2, RowH), ink);
-                }
 
             PaintScrollbar(g);
         }
@@ -1254,23 +1294,21 @@ namespace Retrace
         void PaintEmpty(Graphics g)
         {
             float cx = Width / 2f, cy = Height / 2f;
-            Ico.List(g, new RectangleF(cx - 26, cy - 66, 52, 52), Theme.Line);
+            Ico.List(g, new RectangleF(cx - 24, cy - 62, 48, 48), Theme.CardLine);
             using (var f = Theme.UiBold(11f))
-                Theme.DrawTrackedCentered(g, Lang.T("list.empty").ToUpperInvariant(), f,
-                    new Rectangle(0, (int)cy - 10, Width, 26), Theme.Muted, Theme.Track);
+                Theme.DrawCentered(g, Lang.T("list.empty"),
+                    f, new Rectangle(0, (int)cy - 8, Width, 26), Theme.Muted);
             using (var f = Theme.Ui(9f))
-                Theme.DrawTrackedCentered(g, Lang.T("list.formats"), f,
-                    new Rectangle(0, (int)cy + 18, Width, 22), Theme.Line, Theme.Track);
+                Theme.DrawCentered(g, Lang.T("list.formats"), f,
+                    new Rectangle(0, (int)cy + 20, Width, 22), Theme.Disabled);
         }
 
         void PaintScrollbar(Graphics g)
         {
             if (!NeedsScroll) return;
-            var track = new Rectangle(Width - ScrollW, 0, ScrollW, Height);
-            using (var b = new SolidBrush(Color.FromArgb(0, 0, 0))) g.FillRectangle(b, track);
             Rectangle thumb = ScrollThumb();
-            thumb.Inflate(-2, 0);
-            using (var b = new SolidBrush(Theme.Line)) g.FillRectangle(b, thumb);
+            thumb.Inflate(-3, -2);
+            Theme.Fill(g, thumb, 2f, Theme.Subtle);
         }
     }
 }
