@@ -54,9 +54,23 @@ namespace Retrace
         // whenever the list changes underneath it.
         readonly List<int> shuffleOrder = new List<int>();
         readonly Random random = new Random();
+        // Held across every mutation of `tracks`. The list is the UI thread's
+        // alone apart from the tag scanner, which runs on a pool thread and only
+        // ever walks a copy taken under this.
+        readonly object gate = new object();
         int current = -1;
 
         public IList<Track> Tracks { get { return tracks; } }
+
+        /// <summary>
+        /// A copy of the entries, safe to walk from another thread. The scanner
+        /// needs one: indexing the live list from a pool thread while the UI
+        /// thread clears or rebuilds it reads past an end that has just moved.
+        /// </summary>
+        public Track[] Snapshot()
+        {
+            lock (gate) return tracks.ToArray();
+        }
         public int Count { get { return tracks.Count; } }
         public bool Shuffle { get; set; }
         public RepeatMode Repeat { get; set; }
@@ -98,14 +112,21 @@ namespace Retrace
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < tracks.Count; i++) seen.Add(tracks[i].Path);
 
-            int first = -1;
+            var added = new List<Track>();
             foreach (string p in paths)
             {
                 if (string.IsNullOrEmpty(p) || !seen.Add(p)) continue;
-                if (first < 0) first = tracks.Count;
-                tracks.Add(new Track(p));
+                added.Add(new Track(p));
             }
-            if (first >= 0) InvalidateShuffle();
+            if (added.Count == 0) return -1;
+
+            int first;
+            lock (gate)
+            {
+                first = tracks.Count;
+                tracks.AddRange(added);
+            }
+            InvalidateShuffle();
             return first;
         }
 
@@ -126,7 +147,7 @@ namespace Retrace
 
         public void Clear()
         {
-            tracks.Clear();
+            lock (gate) tracks.Clear();
             shuffleOrder.Clear();
             current = -1;
         }
@@ -143,20 +164,26 @@ namespace Retrace
             foreach (int i in indices) if (i >= 0 && i < tracks.Count) drop.Add(i);
             if (drop.Count == 0) return;
 
-            string playing = current >= 0 && current < tracks.Count ? tracks[current].Path : null;
+            // The track itself, not its path: it is the same object either side
+            // of the rebuild, so finding it again is a reference comparison and
+            // needs no opinion about how two spellings of a path compare.
+            Track playing = current >= 0 && current < tracks.Count ? tracks[current] : null;
             bool playingDropped = current >= 0 && drop.Contains(current);
 
             var kept = new List<Track>(tracks.Count - drop.Count);
             for (int i = 0; i < tracks.Count; i++) if (!drop.Contains(i)) kept.Add(tracks[i]);
-            tracks.Clear();
-            tracks.AddRange(kept);
+            lock (gate)
+            {
+                tracks.Clear();
+                tracks.AddRange(kept);
+            }
 
             if (playingDropped || playing == null) current = -1;
             else
             {
                 current = -1;
                 for (int i = 0; i < tracks.Count; i++)
-                    if (tracks[i].Path == playing) { current = i; break; }
+                    if (tracks[i] == playing) { current = i; break; }
             }
             InvalidateShuffle();
         }

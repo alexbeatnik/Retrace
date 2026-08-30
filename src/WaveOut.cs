@@ -114,6 +114,8 @@ namespace Retrace
             }
         }
 
+        // Both of these read and write memory that Dispose frees; every caller
+        // holds `gate` and has checked `disposed`.
         void MarkDone(int i)
         {
             var hdr = (WaveHdr)Marshal.PtrToStructure(headers[i], typeof(WaveHdr));
@@ -137,37 +139,44 @@ namespace Retrace
         {
             if (frames <= 0) return true;
             if (frames > blockFrames) frames = blockFrames;
+            int samples = frames * Channels;
 
             // A bounded wait rather than an infinite one: waveOutReset can retire
             // the queued blocks without the event ever being set, and an infinite
             // wait here would strand the decode thread on shutdown.
             int spins = 0;
-            while (!IsDone(next))
+            while (true)
             {
-                if (disposed) return false;
-                ready.WaitOne(50);
+                // Every read and write of a header or a buffer happens under the
+                // gate and behind the disposed flag, because the engine gives up
+                // on a wedged writer after a second and a half and then frees
+                // them: a check outside the lock is a promise this thread cannot
+                // keep, and the memory is gone by the time it copies into it.
+                lock (gate)
+                {
+                    if (disposed) return false;
+                    if (IsDone(next))
+                    {
+                        Marshal.Copy(pcm, 0, data[next], samples);
+                        var hdr = (WaveHdr)Marshal.PtrToStructure(headers[next], typeof(WaveHdr));
+                        hdr.dwFlags &= ~WHDR_DONE;
+                        hdr.dwBufferLength = samples * 2;
+                        Marshal.StructureToPtr(hdr, headers[next], false);
+                        if (waveOutWrite(device, headers[next], hdrSize) != 0)
+                        {
+                            MarkDone(next);
+                            return false;
+                        }
+                        next = (next + 1) % blocks;
+                        return true;
+                    }
+                }
+                // Closed under us while waiting is the same answer as a reset:
+                // the writer is finished either way.
+                try { ready.WaitOne(50); }
+                catch (ObjectDisposedException) { return false; }
                 if (++spins > 200) return false;
             }
-            if (disposed) return false;
-
-            int samples = frames * Channels;
-            Marshal.Copy(pcm, 0, data[next], samples);
-
-            lock (gate)
-            {
-                if (disposed) return false;
-                var hdr = (WaveHdr)Marshal.PtrToStructure(headers[next], typeof(WaveHdr));
-                hdr.dwFlags &= ~WHDR_DONE;
-                hdr.dwBufferLength = samples * 2;
-                Marshal.StructureToPtr(hdr, headers[next], false);
-                if (waveOutWrite(device, headers[next], hdrSize) != 0)
-                {
-                    MarkDone(next);
-                    return false;
-                }
-            }
-            next = (next + 1) % blocks;
-            return true;
         }
 
         /// <summary>
@@ -200,7 +209,11 @@ namespace Retrace
         /// the end of a track from the end of its audio.</summary>
         public bool HasQueuedAudio()
         {
-            for (int i = 0; i < blocks; i++) if (!IsDone(i)) return true;
+            lock (gate)
+            {
+                if (disposed) return false;
+                for (int i = 0; i < blocks; i++) if (!IsDone(i)) return true;
+            }
             return false;
         }
 
@@ -245,14 +258,20 @@ namespace Retrace
             // retired; unpreparing a header it has not finished with is what
             // corrupts the heap on close.
             Thread.Sleep(30);
-            for (int i = 0; i < blocks; i++)
+            // Under the gate as well: an abandoned writer that is still running
+            // takes it for every touch of these, and freeing them alongside it
+            // rather than under it is the access violation this all guards.
+            lock (gate)
             {
-                waveOutUnprepareHeader(device, headers[i], hdrSize);
-                Marshal.FreeHGlobal(headers[i]);
-                Marshal.FreeHGlobal(data[i]);
+                for (int i = 0; i < blocks; i++)
+                {
+                    waveOutUnprepareHeader(device, headers[i], hdrSize);
+                    Marshal.FreeHGlobal(headers[i]);
+                    Marshal.FreeHGlobal(data[i]);
+                }
+                waveOutClose(device);
+                device = IntPtr.Zero;
             }
-            waveOutClose(device);
-            device = IntPtr.Zero;
             ready.Close();
         }
     }

@@ -198,8 +198,10 @@ namespace Retrace
             worker = null;
 
             // The decoder belongs to the worker and is disposed there. Only the
-            // device is ours to close, and by here the worker has stopped writing
-            // to it.
+            // device is ours to close. A worker abandoned by the join above may
+            // still be inside Write, so the closing is safe because WaveOut
+            // refuses every use of its buffers once disposed — not because the
+            // join is assumed to have won.
             output = null;
             if (o != null) o.Dispose();
 

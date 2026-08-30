@@ -1,6 +1,7 @@
 // Which track comes next — where a player's behaviour actually lives.
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Retrace.Tests
 {
@@ -168,6 +169,54 @@ namespace Retrace.Tests
             list.At(0).Duration = 10;
             list.At(1).Duration = 20.5;
             Assert.Close(30.5, list.TotalDuration, 1e-9, "durations add up");
+        }
+
+        public static void TestSnapshotIsACopy()
+        {
+            var list = Three();
+            Track[] snapshot = list.Snapshot();
+            list.Clear();
+            Assert.Equal(3, snapshot.Length, "the copy still holds what the list held");
+            Assert.Equal(0, list.Count, "and clearing the list did not reach into it");
+        }
+
+        public static void TestSnapshotSurvivesTheListChangingUnderIt()
+        {
+            // The tag scanner walks the playlist from a pool thread while the UI
+            // thread adds to it, removes from it and clears it. Reading the live
+            // list from there indexes past an end that has just moved; this runs
+            // both sides at once for long enough to catch that if it comes back.
+            var list = Three();
+            Exception failure = null;
+            bool stop = false;
+
+            var reader = new Thread(delegate()
+            {
+                try
+                {
+                    while (!Volatile.Read(ref stop))
+                    {
+                        Track[] snapshot = list.Snapshot();
+                        for (int i = 0; i < snapshot.Length; i++)
+                            if (snapshot[i] == null)
+                                throw new InvalidOperationException("a hole in the snapshot");
+                    }
+                }
+                catch (Exception ex) { failure = ex; }
+            });
+            reader.IsBackground = true;
+            reader.Start();
+
+            for (int i = 0; i < 3000; i++)
+            {
+                list.Add(new List<string> { @"C:\x" + i + ".mp3" });
+                list.Remove(new List<int> { 0 });
+                if (i % 100 == 0) list.Clear();
+            }
+            Volatile.Write(ref stop, true);
+            Assert.True(reader.Join(5000), "the reader finished");
+            Assert.True(failure == null,
+                failure == null ? "it never saw a torn list" : failure.Message);
         }
 
         public static void TestTrackLabelFallsBackToTheFilename()

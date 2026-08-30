@@ -70,7 +70,9 @@ namespace Retrace
             {
                 if (MessageBox.Show(this, Lang.T("uninstall.confirm"), Brand.Product,
                         MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
-                LaunchMode("--uninstall");
+                // The answer travels with the request: the second instance would
+                // otherwise ask the same question again for the one click.
+                LaunchMode("--uninstall --confirmed");
             }
             else LaunchMode("--install");
         }
@@ -214,10 +216,13 @@ namespace Retrace
 
         // ---- --uninstall ---------------------------------------------------------
 
-        internal static void RunUninstallMode()
+        /// <param name="confirmed">Set when the window that launched this has
+        /// already asked — the Settings button confirms before closing the player.
+        /// Apps and features runs the bare --uninstall, and is asked here.</param>
+        internal static void RunUninstallMode(bool confirmed)
         {
             Lang.Current = Lang.SystemDefault();
-            if (MessageBox.Show(Lang.T("uninstall.confirm"), Brand.Product,
+            if (!confirmed && MessageBox.Show(Lang.T("uninstall.confirm"), Brand.Product,
                     MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
             System.Threading.Thread.Sleep(1200); // let the main instance close
 

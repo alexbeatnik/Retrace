@@ -318,42 +318,44 @@ namespace Retrace
                 try
                 {
                     int done = 0;
+                    // A copy per pass rather than the live list. The UI thread
+                    // clears and rebuilds the playlist underneath this one, and
+                    // indexing it from here reads past an end that has just
+                    // moved; entries added during a pass are caught by the next.
                     while (true)
                     {
-                        Track next = null;
-                        // Reading the list from this thread is safe only because
-                        // every mutation of it happens on the UI thread and this is
-                        // a snapshot; a stale count simply means the next pass
-                        // catches the rest.
-                        IList<Track> tracks = playlist.Tracks;
-                        for (int i = 0; i < tracks.Count; i++)
+                        bool unscanned = false;
+                        Track[] tracks = playlist.Snapshot();
+                        for (int i = 0; i < tracks.Length; i++)
                         {
-                            Track t = tracks[i];
-                            if (t != null && !t.Scanned) { next = t; break; }
-                        }
-                        if (next == null) break;
+                            Track next = tracks[i];
+                            if (next == null || next.Scanned) continue;
+                            unscanned = true;
 
-                        TrackTags tags = Tags.Read(next.Path);
-                        next.Artist = tags.Artist;
-                        if (!string.IsNullOrEmpty(tags.Title)) next.Title = tags.Title;
-                        next.Album = tags.Album;
-                        next.Year = tags.Year;
-                        // The decoder is the last word on the length, but it only
-                        // ever opens the track being played: without the header's
-                        // own answer every row nobody has played yet reads --:--
-                        // and the playlist total is wrong until it has. A length
-                        // already measured by the decoder is not overwritten.
-                        if (tags.Duration > 0 && next.Duration <= 0)
-                            next.Duration = tags.Duration;
-                        next.Scanned = true;
+                            TrackTags tags = Tags.Read(next.Path);
+                            next.Artist = tags.Artist;
+                            if (!string.IsNullOrEmpty(tags.Title)) next.Title = tags.Title;
+                            next.Album = tags.Album;
+                            next.Year = tags.Year;
+                            // The decoder is the last word on the length, but it
+                            // only ever opens the track being played: without the
+                            // header's own answer every row nobody has played yet
+                            // reads --:-- and the playlist total is wrong until it
+                            // has. A length already measured by the decoder is not
+                            // overwritten.
+                            if (tags.Duration > 0 && next.Duration <= 0)
+                                next.Duration = tags.Duration;
+                            next.Scanned = true;
 
-                        // Repaint in batches: a redraw per file turns a thousand-
-                        // track folder into a thousand invalidations.
-                        if (++done >= 24)
-                        {
-                            done = 0;
-                            OnUi(delegate { UpdateDisplay(); });
+                            // Repaint in batches: a redraw per file turns a
+                            // thousand-track folder into a thousand invalidations.
+                            if (++done >= 24)
+                            {
+                                done = 0;
+                                OnUi(delegate { UpdateDisplay(); });
+                            }
                         }
+                        if (!unscanned) break;
                     }
                 }
                 finally

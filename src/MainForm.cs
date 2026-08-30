@@ -65,10 +65,12 @@ namespace Retrace
             // purpose: they are launched by the main window as it closes, and
             // taking the mutex would mean waiting for the process they are
             // replacing. Neither opens the sound card, so two copies is fine.
+            bool confirmed = false;
+            foreach (string a in args) if (a == "--confirmed") confirmed = true;
             foreach (string a in args)
             {
                 if (a == "--install") { RunInstallMode(); return 0; }
-                if (a == "--uninstall") { RunUninstallMode(); return 0; }
+                if (a == "--uninstall") { RunUninstallMode(confirmed); return 0; }
             }
 
             var files = new List<string>();

@@ -15,7 +15,7 @@ namespace Retrace
     static class Brand
     {
         public const string Product = "Retrace";
-        public const string Version = "1.1.0";
+        public const string Version = "1.1.1";
 
         // 256 is what Explorer's extra-large view wants; 16/20/24 are the tray,
         // the taskbar and the title bar.
