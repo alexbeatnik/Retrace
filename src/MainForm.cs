@@ -313,7 +313,7 @@ namespace Retrace
                     e.SuppressKeyPress = true;
                     break;
                 case Keys.Delete:
-                    if (activePage == 1) { RemoveSelected(); e.SuppressKeyPress = true; }
+                    if (activePage == 0) { RemoveSelected(); e.SuppressKeyPress = true; }
                     break;
                 case Keys.O:
                     if (e.Control) { AddFilesDialog(); e.SuppressKeyPress = true; }
@@ -321,7 +321,6 @@ namespace Retrace
                 case Keys.D1: ShowPage(0); e.SuppressKeyPress = true; break;
                 case Keys.D2: ShowPage(1); e.SuppressKeyPress = true; break;
                 case Keys.D3: ShowPage(2); e.SuppressKeyPress = true; break;
-                case Keys.D4: ShowPage(3); e.SuppressKeyPress = true; break;
                 case Keys.T:
                     if (e.Control) { NextScheme(); e.SuppressKeyPress = true; }
                     break;

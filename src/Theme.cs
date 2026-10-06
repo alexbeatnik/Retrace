@@ -187,7 +187,10 @@ namespace Retrace
         {
             var p = new GraphicsPath();
             float d = rad * 2;
-            if (d <= 0 || r.Width <= d || r.Height <= d) { p.AddRectangle(r); return p; }
+            // A radius of exactly half the height is a pill (or a circle when
+            // the width matches), not a degenerate rectangle. Transport keys
+            // and active navigation tabs both use that geometry.
+            if (d <= 0 || r.Width < d || r.Height < d) { p.AddRectangle(r); return p; }
             p.AddArc(r.X, r.Y, d, d, 180, 90);
             p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
             p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);

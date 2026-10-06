@@ -123,18 +123,19 @@ namespace Retrace
             Theme.PaintCard(g, Width, Height);
 
             using (var capF = Theme.UiBold(8f))
-            using (var valF = Theme.UiBold(13f))
+            using (var valF = Theme.UiBold(12.5f))
             {
-                int x = 22;
+                int cell = (Width - 36) / Math.Max(1, Captions.Length);
                 for (int i = 0; i < Captions.Length; i++)
                 {
+                    int x = 20 + i * cell;
                     string cap = Captions[i].ToUpperInvariant();
                     string val = i < Values.Length ? Values[i] : "";
-                    int cell = Math.Max(Theme.Measure(cap, capF), Theme.Measure(val, valF));
                     Theme.DrawLabel(g, cap, capF, new Point(x, 13), Theme.Muted);
-                    Theme.Draw(g, val, valF, new Rectangle(x, 28, cell + 8, 24), Theme.Text);
-                    x += cell + 30;
-                    if (x > Width - 24) break;
+                    Theme.Draw(g, val, valF, new Rectangle(x, 28, cell - 18, 24), Theme.Text);
+                    if (i > 0)
+                        using (var line = new Pen(Theme.CardLine))
+                            g.DrawLine(line, x - 10, 14, x - 10, Height - 19);
                 }
             }
         }
@@ -943,12 +944,13 @@ namespace Retrace
     /// </summary>
     class TrackList : Themed
     {
-        public const int RowH = 26;
+        public const int RowH = 28;
         const int ScrollW = 10;
 
         Playlist list;
         readonly HashSet<int> selected = new HashSet<int>();
         int anchor = -1;
+        int cursor = -1; // moving end of a keyboard range; anchor stays fixed
         int top;
         int hover = -1;
         bool draggingScroll;
@@ -966,7 +968,7 @@ namespace Retrace
         public Playlist Source
         {
             get { return list; }
-            set { list = value; top = 0; selected.Clear(); Invalidate(); }
+            set { list = value; top = 0; anchor = -1; cursor = -1; selected.Clear(); Invalidate(); }
         }
 
         public int SelectionCount { get { return selected.Count; } }
@@ -980,9 +982,10 @@ namespace Retrace
 
         public void ClearSelection()
         {
-            if (selected.Count == 0) return;
+            if (selected.Count == 0 && anchor < 0 && cursor < 0) return;
             selected.Clear();
             anchor = -1;
+            cursor = -1;
             RaiseSelection();
             Invalidate();
         }
@@ -1018,6 +1021,8 @@ namespace Retrace
             var stale = new List<int>();
             foreach (int i in selected) if (i >= Count) stale.Add(i);
             foreach (int i in stale) selected.Remove(i);
+            if (anchor >= Count) anchor = -1;
+            if (cursor >= Count) cursor = -1;
             Clamp();
             Invalidate();
         }
@@ -1026,6 +1031,7 @@ namespace Retrace
 
         int RowAt(int y)
         {
+            if (y < 0 || y >= Height) return -1;
             int index = top + y / RowH;
             return index >= 0 && index < Count ? index : -1;
         }
@@ -1078,6 +1084,7 @@ namespace Retrace
                     selected.Clear();
                     selected.Add(index);
                     anchor = index;
+                    cursor = index;
                     RaiseSelection();
                 }
                 Invalidate();
@@ -1090,17 +1097,20 @@ namespace Retrace
                 selected.Clear();
                 int from = Math.Min(anchor, index), to = Math.Max(anchor, index);
                 for (int i = from; i <= to; i++) selected.Add(i);
+                cursor = index;
             }
             else if ((ModifierKeys & Keys.Control) != 0)
             {
                 if (!selected.Remove(index)) selected.Add(index);
                 anchor = index;
+                cursor = index;
             }
             else
             {
                 selected.Clear();
                 selected.Add(index);
                 anchor = index;
+                cursor = index;
             }
             RaiseSelection();
             Invalidate();
@@ -1172,7 +1182,7 @@ namespace Retrace
         protected override void OnKeyDown(KeyEventArgs e)
         {
             if (Count == 0) { base.OnKeyDown(e); return; }
-            int cursor = anchor >= 0 ? anchor : top;
+            int fromCursor = cursor >= 0 ? cursor : (anchor >= 0 ? anchor : top);
             int move;
             switch (e.KeyCode)
             {
@@ -1195,6 +1205,7 @@ namespace Retrace
                     {
                         selected.Clear();
                         for (int i = 0; i < Count; i++) selected.Add(i);
+                        if (cursor < 0) cursor = top;
                         RaiseSelection();
                         Invalidate();
                         e.Handled = true;
@@ -1205,7 +1216,7 @@ namespace Retrace
                     return;
             }
 
-            int target = cursor + move;
+            int target = fromCursor + move;
             if (target < 0) target = 0;
             if (target >= Count) target = Count - 1;
 
@@ -1223,6 +1234,7 @@ namespace Retrace
                 selected.Add(target);
                 anchor = target;
             }
+            cursor = target;
             EnsureVisible(target);
             RaiseSelection();
             e.Handled = true;
@@ -1241,10 +1253,10 @@ namespace Retrace
             int current = list.CurrentIndex;
             int last = Math.Min(Count, top + VisibleRows + 1);
 
-            using (var face = Theme.Ui(9.5f))
-                using (var faceBold = Theme.UiBold(9.5f))
-                using (var num = Theme.Digits(8f))
-                using (var clock = Theme.Digits(9f))
+            using (var face = Theme.Ui(10f))
+                using (var faceBold = Theme.UiBold(10f))
+                using (var num = Theme.Digits(8.5f))
+                using (var clock = Theme.Digits(9.5f))
                     for (int i = top; i < last; i++)
                     {
                         Track t = list.At(i);

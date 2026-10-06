@@ -112,6 +112,20 @@ namespace Retrace.Tests
             }
         }
 
+        public static void TestHalfHeightRadiusMakesPillsAndCircles()
+        {
+            // Navigation tabs and transport keys use exactly half their height
+            // as the radius. Their corners must stay outside the painted path.
+            using (var pill = Theme.Round(new RectangleF(0, 0, 80, 36), 18))
+            using (var circle = Theme.Round(new RectangleF(0, 0, 42, 42), 21))
+            {
+                Assert.False(pill.IsVisible(2, 2), "the tab still has square corners");
+                Assert.True(pill.IsVisible(40, 18), "the tab lost its centre");
+                Assert.False(circle.IsVisible(2, 2), "the transport key is still square");
+                Assert.True(circle.IsVisible(21, 21), "the transport key lost its centre");
+            }
+        }
+
         /// <summary>Perceived brightness — the usual weighting, which is close
         /// enough for ordering two tones against each other.</summary>
         static double Luma(Color c)
