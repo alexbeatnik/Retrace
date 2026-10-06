@@ -65,7 +65,7 @@ namespace Retrace
 
             pendingVolume = (float)Util.IniDouble(map, "volume", 0.7, 0, 1);
             pendingBalance = (float)Util.IniDouble(map, "balance", 0, -1, 1);
-            pendingPage = Util.IniInt(map, "page", 0, 0, 3);
+            pendingPage = Util.IniInt(map, "page", 0, 0, 2);
             pendingVis = (AnalyserMode)Util.IniInt(map, "vis", 0, 0, 3);
             // The scheme has to be in place before anything paints, so it is
             // applied here rather than waiting for ApplySettingsToUi.

@@ -139,7 +139,7 @@ namespace Retrace
             // The app's own mark rather than a glyph: the window and the taskbar
             // icon are then visibly the same thing.
             Brand.PaintMark(g, new RectangleF(Pad, 14, 32, 32), Theme.Current);
-            using (var f = Theme.UiBold(14.5f))
+            using (var f = Theme.UiBold(15.5f))
                 Theme.DrawLabel(g, Brand.Product, f, new Point(Pad + 42, 19), Theme.Text);
         }
 
@@ -156,7 +156,7 @@ namespace Retrace
                 bool live = engine != null && engine.State == PlayState.Playing;
                 Theme.Fill(e.Graphics, new RectangleF(Pad, StatusH / 2f - 3, 6, 6), 3f,
                     live ? Theme.Accent : Theme.Disabled);
-                using (var f = Theme.Ui(8.5f))
+                using (var f = Theme.Ui(9f))
                     Theme.Draw(e.Graphics, statusLine, f,
                         new Rectangle(Pad + 14, 0, WinW - Pad * 2 - 14, StatusH), Theme.Muted);
             };
@@ -165,6 +165,7 @@ namespace Retrace
 
         void ShowPage(int index)
         {
+            if (index < 0 || index > 2) return;
             activePage = index;
             var pages = new[] { pagePlayer, pageEq, pageSetup };
             for (int i = 0; i < pages.Length; i++)
@@ -357,14 +358,14 @@ namespace Retrace
             // A tile rather than cover art: reading the art out of a tag means a
             // decoder and a cache, and this says "a track is loaded" at the same
             // glance for nothing.
-            var tile = new RectangleF(20, 40, 68, 68);
-            Theme.Fill(g, tile, Theme.RadiusSmall + 2, t != null ? Theme.AccentSoft : Theme.Sunken);
-            Theme.Outline(g, tile, Theme.RadiusSmall + 2, Theme.CardLine);
-            Ico.Wave(g, new RectangleF(tile.X + 13, tile.Y + 22, 42, 24),
+            var tile = new RectangleF(20, 39, 74, 74);
+            Theme.Fill(g, tile, Theme.Radius, t != null ? Theme.AccentSoft : Theme.Sunken);
+            Theme.Outline(g, tile, Theme.Radius, t != null ? Theme.Accent : Theme.CardLine);
+            Ico.Wave(g, new RectangleF(tile.X + 15, tile.Y + 25, 44, 24),
                 t != null ? Theme.AccentHot : Theme.Disabled);
 
-            using (var big = Theme.UiBold(14.5f))
-            using (var mid = Theme.Ui(9.5f))
+            using (var big = Theme.UiBold(17f))
+            using (var mid = Theme.Ui(10f))
             using (var clock = Theme.DigitsBold(18f))
             using (var small = Theme.Digits(10f))
             {
@@ -378,17 +379,18 @@ namespace Retrace
                 int tw = Theme.Measure(total, small);
                 int clockLeft = w - 26 - Math.Max(cw, tw);
 
-                const int textX = 104;
+                const int textX = 112;
                 int textW = Math.Max(40, clockLeft - textX - 20);
 
-                string title = t != null ? t.Label : Lang.T("now.nothing");
-                Theme.Draw(g, title, big, new Rectangle(textX, 44, textW, 26),
+                string title = t != null ? t.Title : Lang.T("now.nothing");
+                Theme.Draw(g, title, big, new Rectangle(textX, 42, textW, 32),
                     t != null ? Theme.Text : Theme.Muted);
 
                 string under;
                 if (t != null)
                 {
                     var parts = new List<string>();
+                    if (t.Artist.Length > 0) parts.Add(t.Artist);
                     if (t.Album.Length > 0) parts.Add(t.Album);
                     if (t.Year.Length > 0) parts.Add(t.Year);
                     if (playlist.Count > 0)
@@ -398,7 +400,7 @@ namespace Retrace
                     under = string.Join("   ·   ", parts.ToArray());
                 }
                 else under = Lang.T("now.hint");
-                Theme.Draw(g, under, mid, new Rectangle(textX, 76, textW, 20), Theme.Muted);
+                Theme.Draw(g, under, mid, new Rectangle(textX, 79, textW, 22), Theme.Muted);
 
                 // Right-aligned and set in the monospace face, so the layout does
                 // not shuffle sideways as the digits change.
